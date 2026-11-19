@@ -277,6 +277,14 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
             elif url:
                 if not youtube_id(url):
                     await run_in_threadpool(validate_public_url, url)
+                else:   # check rights now so the user gets an answer immediately, not a failed job later
+                    from ..ingest import LiveNotFinished, youtube_info, youtube_rights
+                    channels = {r["channel_id"] for r in db.all("SELECT channel_id FROM channels WHERE user_id=?", (u["id"],))}
+                    info = await run_in_threadpool(youtube_info, youtube_id(url))
+                    try:
+                        youtube_rights(info, channels)
+                    except LiveNotFinished:
+                        pass                    # queue it; the worker starts when the replay exists
                 spec["url"] = url
             else:
                 raise IngestError("Paste a link or choose a file")

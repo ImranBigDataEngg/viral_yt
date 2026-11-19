@@ -286,6 +286,15 @@ class TestV22(unittest.TestCase):
         with self.assertRaises(LiveNotFinished):
             youtube_rights({**info, "live": "live"}, {"UC1"})
 
+    def test_ytdlp_metadata_mapping(self):
+        from viral_yt.ingest import ytdlp_to_info
+        cc = ytdlp_to_info("x", {"channel_id": "UC9", "channel": "Ch", "duration": 3600, "live_status": "was_live",
+                                 "license": "Creative Commons Attribution license (reuse allowed)"})
+        self.assertEqual((cc["license"], cc["live"], cc["channel_id"]), ("creativeCommon", "none", "UC9"))
+        self.assertEqual(ytdlp_to_info("x", {"live_status": "is_live"})["live"], "live")
+        self.assertEqual(ytdlp_to_info("x", {"live_status": "is_upcoming"})["live"], "upcoming")
+        self.assertEqual(ytdlp_to_info("x", {})["license"], "youtube")
+
     def test_ssrf_validator(self):
         from viral_yt.ingest import IngestError, validate_public_url
         for bad in ("http://example.com/a.mp4", "https://127.0.0.1/a", "https://10.0.0.5/a", "https://[::1]/a",

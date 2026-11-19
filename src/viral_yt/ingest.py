@@ -82,9 +82,11 @@ def validate_public_url(url: str) -> urllib.parse.SplitResult:
 
 
 def youtube_info(video_id: str, api_key: str | None = None, opener=None) -> dict:
+    """Metadata needed for the rights check (no media is downloaded). Uses the YouTube Data API when
+    YOUTUBE_API_KEY is set, otherwise yt-dlp's metadata-only mode."""
     key = api_key or env("YOUTUBE_API_KEY")
     if not key:
-        raise IngestError("YOUTUBE_API_KEY is required to check rights for YouTube links")
+        return _youtube_info_ytdlp(video_id)
     q = urllib.parse.urlencode({"part": "snippet,status,contentDetails,liveStreamingDetails", "id": video_id, "key": key})
     with (opener or urllib.request.urlopen)(f"https://www.googleapis.com/youtube/v3/videos?{q}", timeout=20) as r:
         items = json.load(r).get("items", [])
@@ -96,6 +98,32 @@ def youtube_info(video_id: str, api_key: str | None = None, opener=None) -> dict
             "channel": it["snippet"].get("channelTitle", ""), "license": it.get("status", {}).get("license", ""),
             "live": it["snippet"].get("liveBroadcastContent", "none"),
             "duration_s": iso_duration(it.get("contentDetails", {}).get("duration", ""))}
+
+
+def ytdlp_to_info(video_id: str, meta: dict) -> dict:
+    """Map yt-dlp metadata to the same shape as the Data API result (pure, unit-tested)."""
+    live_status = meta.get("live_status") or ""
+    live = ("live" if live_status in ("is_live", "post_live") else "upcoming" if live_status == "is_upcoming"
+            else "none")
+    lic = (meta.get("license") or "").lower()
+    return {"video_id": video_id, "title": meta.get("title") or "", "channel_id": meta.get("channel_id") or "",
+            "channel": meta.get("channel") or meta.get("uploader") or "",
+            "license": "creativeCommon" if "creative commons" in lic else "youtube",
+            "live": live, "duration_s": int(meta.get("duration") or 0)}
+
+
+def _youtube_info_ytdlp(video_id: str) -> dict:
+    try:
+        import yt_dlp
+    except ImportError as exc:
+        raise IngestError("Checking YouTube links needs YOUTUBE_API_KEY in .env or yt-dlp installed "
+                          "(pip install yt-dlp)") from exc
+    try:
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True}) as ydl:
+            meta = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+    except Exception as exc:  # yt-dlp raises many error types
+        raise IngestError(f"Couldn't read that YouTube video: {str(exc)[:200]}") from exc
+    return ytdlp_to_info(video_id, meta or {})
 
 
 def youtube_rights(info: dict, verified_channel_ids: set[str]) -> tuple[str, str]:
