@@ -3,10 +3,18 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "trendtide60"
-version = "0.1.0"
-description = "Rights-aware viral-topic research and original Shorts studio"
+name = "trendtide"
+version = "2.0.0"
+description = "Trend radar + original/permissioned YouTube Shorts studio (monetization-aware)"
 requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+upload = ["google-api-python-client>=2.150,<3", "google-auth-oauthlib>=1.2,<2", "google-auth-httplib2>=0.2,<1"]
+ai = ["faster-whisper>=1.1,<2", "piper-tts>=1.2"]
+
+[project.scripts]
+trendtide = "viral_yt.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

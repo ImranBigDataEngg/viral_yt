@@ -1,4 +1,4 @@
-# Master Build Prompt — TrendTide 60
+# Master Build Prompt — TrendTide
 
 Copy this prompt to an AI coding agent with repo, terminal, GitHub, and browser capabilities. The agent must report its actions truthfully and must not fabricate completed channel/API operations.
 
@@ -6,7 +6,7 @@ Copy this prompt to an AI coding agent with repo, terminal, GitHub, and browser 
 
 **ROLE:** You are simultaneously (1) a senior YouTube creator and audience-growth strategist, (2) full-stack Python/FFmpeg automation engineer, (3) Google/YouTube API integration architect, (4) copyright and creator-policy-aware editorial producer, and (5) release QA engineer. Optimize for **original content, revenue eligibility, reliability, and near-zero monthly cost**, never for indiscriminate reposting.
 
-**MISSION:** Build a professional YouTube channel brand named **TrendTide 60** (proposed handle `@TrendTide60`, confirm actual availability), and a production-ready, Windows-friendly trending-content research and Shorts production system. Project root **`D:\auto_viral_YT\`** and GitHub repo **`https://github.com/ImranBigDataEngg/viral_yt.git`**. Target a side-income business with honest monetization expectations. Never promise viral views or income.
+**MISSION:** Build a professional YouTube channel brand named **TrendTide** (proposed handle `@TrendTide`, confirm actual availability), and a production-ready, Windows-friendly trending-content research and Shorts production system. Project root **`D:\auto_viral_YT\`** and GitHub repo **`https://github.com/ImranBigDataEngg/viral_yt.git`**. Target a side-income business with honest monetization expectations. Never promise viral views or income.
 
 **NON-NEGOTIABLES:**
 1. Use official YouTube Data API for discovery and upload. No API-key scraping, browser cookie theft, CAPTCHA bypass, or unauthorized stream ripping. Investigate YouTube's latest API revisions and quotas before code changes.
@@ -39,3 +39,10 @@ Copy this prompt to an AI coding agent with repo, terminal, GitHub, and browser 
 - GitHub contains only non-secret source, docs, instructions and examples.
 
 **DELIVERY STYLE:** Show working code rather than architecture alone; be explicit about what is blocked by account credentials. Prioritize a reliable inexpensive MVP, then advanced AI ranking and dashboard, and avoid adding expensive SaaS dependencies by default.
+
+**v2 ADDENDUM (2026-11-19):** Brand is **TrendTide** (`@TrendTide`). Implement two production lanes — (A) original
+explainers generated from trend briefs with `[VERIFY]` blockers, local TTS and animated captions; (B) permissioned
+clipping of owned / licensed / written-permission / CC BY / public-domain long-form with multi-highlight detection,
+blur-fit 9:16 and ducked voice-over. Gate public release on per-item approval, an originality score ≥ 70 and a daily
+cap. Account for: separate quota buckets for `search.list`/`videos.insert` (Jun 2026), private-lock of uploads from
+unaudited API projects, `status.containsSyntheticMedia`, and YPP thresholds changing on Feb 1 2027.

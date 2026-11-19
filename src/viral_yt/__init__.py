@@ -1,2 +1,2 @@
-"""TrendTide 60, rights-aware original short-video creation toolkit."""
-__version__ = "0.1.0"
+"""TrendTide: trend radar + original / permissioned Shorts studio."""
+__version__ = "2.0.0"

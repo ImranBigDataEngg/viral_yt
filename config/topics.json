@@ -1,7 +1,7 @@
 {
-  "Gaming": ["GTA 6", "new video game announcements"],
-  "AI & Tech": ["AI tools launch", "technology news"],
-  "Entertainment": ["entertainment trends"],
-  "Viral Culture": ["viral internet trends"],
-  "Science & Space": ["space science breakthrough"]
+  "Gaming": ["GTA 6", "new game trailer", "gaming news"],
+  "AI & Tech": ["AI tools", "new AI model", "tech news"],
+  "Entertainment": ["movie trailer", "celebrity news"],
+  "Viral Culture": ["viral challenge", "internet trend"],
+  "Science & Space": ["NASA", "space discovery"]
 }

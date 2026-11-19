@@ -1,3 +1,3 @@
-# Optional local automatic caption creation. Installs CPU-friendly speech recognition;
-# language models are downloaded on first use and may require disk/network.
-faster-whisper>=1.1,<2
+# Optional local AI (free, offline after first model download)
+faster-whisper>=1.1,<2     # word-level captions + transcripts of AUTHORIZED media
+piper-tts>=1.2             # natural local text-to-speech (MIT); voice models downloaded separately

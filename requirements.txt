@@ -1,6 +1,5 @@
-# Only needed for YouTube OAuth upload; official discovery uses stdlib HTTP
-requests>=2.32,<3
-# Google maintained libraries used for upload
+# Discovery, rendering, manifests use only the Python stdlib + FFmpeg.
+# Needed for YouTube upload and optional Google Drive share links:
 google-api-python-client>=2.150,<3
 google-auth-oauthlib>=1.2,<2
 google-auth-httplib2>=0.2,<1

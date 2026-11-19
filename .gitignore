@@ -15,3 +15,11 @@ output/
 *.webm
 .DS_Store
 Thumbs.db
+models/
+*.db
+*.onnx
+*.ass
+*.srt
+!examples/**
+dist/
+*.egg-info/

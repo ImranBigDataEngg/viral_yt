@@ -1,4 +1,4 @@
-"""Command line entry point: python -m viral_yt.cli <command>."""
+"""Command line entry point: python -m viral_yt.cli <command>  (or `trendtide <command>` after pip install -e .)"""
 from __future__ import annotations
 
 import argparse
@@ -6,60 +6,102 @@ import json
 import sys
 from pathlib import Path
 
-from .clipper import render
-from .common import ROOT, local_file
-from .discovery import discover
-from .manifest import build_manifest
-from .publisher import upload
-from .rights import load_asset, validate_asset
-from .transcripts import parse_srt, select_highlight, transcribe_owned_file
+from .common import ROOT, read_csv
+
+
+def _print(obj) -> None:
+    print(json.dumps(obj, indent=2, ensure_ascii=False, default=str))
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="TrendTide 60 | Copyright-aware Shorts studio")
-    sub = parser.add_subparsers(dest="command", required=True)
-    trends = sub.add_parser("discover", help="Research YouTube trends via official API")
-    trends.add_argument("--top", type=int, default=10)
-    trends.add_argument("--region", default=None)
-    trends.add_argument("--days", type=int, default=None)
-    trends.add_argument("--topics", type=Path, default=None)
-    srt = sub.add_parser("suggest-highlights", help="Rank timestamped captions for editorial review")
-    srt.add_argument("--srt", type=Path, required=True)
-    for name in ("validate", "render", "transcribe", "upload"):
-        command = sub.add_parser(name)
-        command.add_argument("--asset-id", required=True)
-        if name == "upload":
-            command.add_argument("--execute", action="store_true", help="Really upload instead of dry-run")
-            command.add_argument("--publish", action="store_true", help="Public upload (requires ledger publish_approved)")
-    sub.add_parser("manifest", help="Write CSV of ready-to-download local clips")
-    args = parser.parse_args(argv)
+    p = argparse.ArgumentParser(prog="trendtide", description="TrendTide | trend radar + original/permissioned Shorts studio")
+    sub = p.add_subparsers(dest="command", required=True)
+
+    d = sub.add_parser("discover", help="Rank trending YouTube videos per category (official API, read-only)")
+    d.add_argument("--top", type=int); d.add_argument("--region"); d.add_argument("--days", type=int)
+    d.add_argument("--topics", type=Path); d.add_argument("--lanes", help="comma list: search,chart,cc")
+
+    b = sub.add_parser("brief", help="Write original Short briefs from the latest trend CSV")
+    b.add_argument("--per-category", type=int, default=3)
+
+    c = sub.add_parser("compose", help="Render an APPROVED explainer brief (voice-over + captions)")
+    c.add_argument("--brief", required=True)
+    c.add_argument("--force", action="store_true", help="Preview render even if brief not approved (never uploaded)")
+
+    hl = sub.add_parser("suggest-highlights", help="Suggest self-contained clip windows from an SRT")
+    hl.add_argument("--srt", type=Path, required=True); hl.add_argument("--count", type=int, default=3)
+    hl.add_argument("--media", type=Path, help="Optional media file for audio-energy signal")
+
+    for name in ("validate", "render", "transcribe"):
+        x = sub.add_parser(name, help=f"{name} a rights-ledger asset")
+        x.add_argument("--asset-id", required=True)
+
+    u = sub.add_parser("upload", help="Dry-run by default; --execute uploads PRIVATE")
+    u.add_argument("--id", "--asset-id", dest="output_id", required=True, help="output_id (sidecar name in output/shorts)")
+    u.add_argument("--execute", action="store_true"); u.add_argument("--publish", action="store_true")
+    u.add_argument("--publish-at", help="ISO time to schedule (e.g. 2026-11-21T14:00:00Z)")
+
+    s = sub.add_parser("share", help="Upload an output to your Google Drive and get a link (optional)")
+    s.add_argument("--id", dest="output_id", required=True)
+
+    sub.add_parser("manifest", help="Write download CSV + HTML gallery with platform captions")
+
+    r = sub.add_parser("run", help="Full daily cycle (safe defaults)")
+    r.add_argument("--no-discover", action="store_true"); r.add_argument("--per-category", type=int, default=3)
+    r.add_argument("--execute", action="store_true"); r.add_argument("--publish", action="store_true")
+    r.add_argument("--share", action="store_true")
+    args = p.parse_args(argv)
+
     try:
         if args.command == "discover":
-            rows = discover(args.top, args.region, args.days, args.topics)
-            print(json.dumps({"candidates": len(rows), "csv": str(ROOT / "output/trends/latest_trends.csv"), "per_category": {c: len([x for x in rows if x["category"] == c]) for c in sorted({x["category"] for x in rows})}}, indent=2))
+            from .discovery import discover
+            rows = discover(args.top, args.region, args.days, args.topics, lanes=args.lanes.split(",") if args.lanes else None)
+            _print({"candidates": len(rows), "csv": str(ROOT / "output/trends/latest_trends.csv"),
+                    "clip_candidates_cc": sum(1 for r in rows if r["clip_candidate"]),
+                    "per_category": {k: sum(1 for r in rows if r["category"] == k) for k in sorted({r["category"] for r in rows})}})
+        elif args.command == "brief":
+            from .scriptgen import write_briefs
+            rows = read_csv(ROOT / "output/trends/latest_trends.csv")
+            _print({"briefs": [str(x) for x in write_briefs(rows, args.per_category)]})
+        elif args.command == "compose":
+            from .composer import compose
+            out = compose(args.brief, force=args.force)
+            _print({"rendered": str(out), "sidecar": str(out.with_suffix(".json"))})
         elif args.command == "suggest-highlights":
+            from .highlights import audio_energy, find_highlights
+            from .transcripts import parse_srt
             cues = parse_srt(args.srt.read_text(encoding="utf-8-sig"))
-            start, end, words = select_highlight(cues)
-            print(json.dumps({"start": start, "end": end, "excerpt": words[:500], "editorial_review_required": True}, indent=2))
+            _print(find_highlights(cues, count=args.count, energy=audio_energy(args.media) if args.media else None))
         elif args.command == "validate":
-            record = load_asset(args.asset_id)
-            video, start, end = validate_asset(record)
-            print(json.dumps({"valid": True, "file": str(video), "clip_start": start, "clip_end": end}, indent=2))
+            from .rights import load_asset, validate_asset
+            video, start, end = validate_asset(load_asset(args.asset_id))
+            _print({"valid": True, "file": str(video), "clip_start": start, "clip_end": end})
         elif args.command == "render":
-            path = render(args.asset_id)
-            print(json.dumps({"rendered": str(path), "exists": path.is_file()}, indent=2))
+            from .clipper import render_all
+            from .state import published_titles
+            _print({"rendered": [str(x) for x in render_all(args.asset_id, published_titles=published_titles())]})
         elif args.command == "transcribe":
-            asset = load_asset(args.asset_id)
-            path, _, _ = validate_asset(asset)
-            out = ROOT / "media/transcripts" / (args.asset_id + ".srt")
-            print(json.dumps({"srt": str(transcribe_owned_file(path, out))}))
+            from .rights import load_asset, validate_asset
+            from .transcripts import transcribe_owned_file
+            path, _, _ = validate_asset(load_asset(args.asset_id))
+            _print({"srt": str(transcribe_owned_file(path, ROOT / "media/transcripts" / f"{args.asset_id}.srt"))})
         elif args.command == "upload":
-            print(json.dumps(upload(args.asset_id, args.execute, args.publish), indent=2))
+            from .publisher import upload
+            _print(upload(args.output_id, args.execute, args.publish, args.publish_at))
+        elif args.command == "share":
+            from .publisher import load_meta
+            from .share import share_file
+            meta = load_meta(args.output_id)
+            _print({"link": share_file(meta["output_id"], Path(meta["file"]))})
         elif args.command == "manifest":
-            file, rows = build_manifest()
-            print(json.dumps({"file": str(file), "assets": len(rows)}, indent=2))
+            from .manifest import build_manifest
+            f, rows = build_manifest()
+            _print({"csv": str(f), "gallery": str(f.with_name("index.html")), "items": len(rows)})
+        elif args.command == "run":
+            from .pipeline import run_cycle
+            _print(run_cycle(not args.no_discover, args.per_category, args.execute, args.publish, args.share))
         return 0
-    except (RuntimeError, ValueError, OSError, json.JSONDecodeError) as exc:
+    except (RuntimeError, ValueError, OSError, json.JSONDecodeError, KeyError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 

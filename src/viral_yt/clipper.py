@@ -1,96 +1,115 @@
-"""FFmpeg-only editing of authorized local sources into vertical Shorts."""
+"""Render PERMISSIONED long-form sources (ledger-approved) into one or more vertical Shorts.
+
+Per output: chosen range -> 9:16 layout (blurfit/crop) -> animated captions + hook card + credit ->
+your commentary mixed over (source ducked) -> loudness-normalised MP4 + JSON sidecar.
+"""
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .common import ROOT, local_file, safe_name
-from .rights import load_asset, validate_asset
-from .transcripts import parse_srt, seconds_to_srt
+from .captions import build_ass
+from .common import ROOT, local_file, safe_name, settings
+from .ffmpeg_tools import (check_ffmpeg, encode_args, ffmpeg_filter_path, has_audio, layout_chain,  # noqa: F401
+                           loudnorm, probe_duration, run)
+from .highlights import audio_energy, find_highlights
+from .originality import score as originality
+from .rights import THIRD_PARTY, load_asset, parse_ranges, validate_asset
+from .transcripts import parse_srt, slice_cues, words_from_cues, write_srt
+
+OUT = ROOT / "output" / "shorts"
 
 
-def check_ffmpeg() -> None:
-    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
-        raise RuntimeError("FFmpeg and ffprobe are required; install FFmpeg and add to PATH")
+def plan_ranges(asset: dict, source: Path, start: float, end: float) -> list[dict]:
+    cfg = settings()["clips"]
+    raw = (asset.get("clip_ranges") or "").strip()
+    if raw.lower() == "auto":
+        cues = parse_srt(local_file(asset["transcript_file"]).read_text(encoding="utf-8-sig"))
+        return find_highlights(cues, cfg["min_seconds"], cfg["max_seconds"], int(cfg["per_source"]), audio_energy(source))
+    ranges = parse_ranges(raw) or [(start, end)]
+    return [{"start": a, "end": b, "hook_line": ""} for a, b in ranges]
 
 
-def probe_duration(media: Path) -> float:
-    check_ffmpeg()
-    result = subprocess.run([
-        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", str(media),
-    ], capture_output=True, text=True)
-    if result.returncode:
-        raise RuntimeError(f"ffprobe failed: {result.stderr[-800:]}")
-    return float(result.stdout.strip())
+def _words_for(asset: dict, start: float, end: float):
+    tf = (asset.get("transcript_file") or "").strip()
+    if not tf:
+        return []
+    path = local_file(tf)
+    wj = path.with_suffix(".words.json")
+    if wj.is_file():
+        words = json.loads(wj.read_text(encoding="utf-8"))
+        return [(max(a, start) - start, min(b, end) - start, w) for a, b, w in words if b > start and a < end]
+    return words_from_cues(slice_cues(parse_srt(path.read_text(encoding="utf-8-sig")), start, end))
 
 
-def slice_srt(source: Path, clip_start: float, clip_end: float, target: Path) -> bool:
-    cues = parse_srt(source.read_text(encoding="utf-8-sig"))
-    selected = []
-    for begin, end, text in cues:
-        clipped_begin, clipped_end = max(begin, clip_start), min(end, clip_end)
-        if clipped_begin < clipped_end:
-            selected.append((clipped_begin - clip_start, clipped_end - clip_start, text))
-    if not selected:
-        return False
-    with target.open("w", encoding="utf-8") as out:
-        for i, (begin, end, text) in enumerate(selected, 1):
-            out.write(f"{i}\n{seconds_to_srt(begin)} --> {seconds_to_srt(end)}\n{text}\n\n")
-    return True
+def render(asset_id: str, preset: str | None = None) -> Path:
+    """Back-compat: render and return the first output."""
+    return render_all(asset_id, preset)[0]
 
 
-def ffmpeg_filter_path(path: Path) -> str:
-    """Escape FFmpeg filter filename separators, including Windows drive colon."""
-    value = path.as_posix()
-    # ffmpeg's filtergraph parser and the subtitle filter both parse colon/backslash.
-    value = value.replace("\\", "\\\\").replace(":", "\\\\:")
-    value = value.replace("'", "'\\''").replace(",", "\\,")
-    return value
-
-
-def render(asset_id: str, preset: str = "medium") -> Path:
+def render_all(asset_id: str, preset: str | None = None, published_titles: list[str] | None = None) -> list[Path]:
+    cfg = settings()["render"]
+    w, h, fps = cfg["width"], cfg["height"], cfg["fps"]
+    preset = preset or cfg["preset"]
     asset = load_asset(asset_id)
     source, start, end = validate_asset(asset)
     check_ffmpeg()
     actual = probe_duration(source)
-    if end > actual + 0.25:
-        raise RuntimeError(f"Clip end {end}s exceeds source duration {actual:.2f}s")
-    output = ROOT / "output" / "shorts"
-    output.mkdir(parents=True, exist_ok=True)
-    output_file = output / f"{safe_name(asset_id)}.mp4"
-    seconds = end - start
-    video_filter = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30"
-    captions_source = (asset.get("transcript_file") or "").strip()
-    caption_file = output / f"{safe_name(asset_id)}.srt"
-    has_captions = captions_source and slice_srt(local_file(captions_source), start, end, caption_file)
-    if has_captions:
-        # Font sizes are relative in ASS; hardcoded captions remain readable on mobile.
-        video_filter += f",subtitles=filename='{ffmpeg_filter_path(caption_file)}':force_style='Fontname=Arial,Fontsize=18,Alignment=2,MarginV=125,Outline=2,Shadow=1'"
+    basis = asset["rights_basis"].strip().lower()
     commentary = (asset.get("commentary_audio") or "").strip()
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", str(start), "-i", str(source)]
-    if commentary:
-        cmd += ["-i", str(local_file(commentary))]
-    cmd += ["-t", str(seconds), "-vf", video_filter, "-map", "0:v:0"]
-    if commentary:
-        cmd += ["-map", "1:a:0"]
-    else:
-        cmd += ["-map", "0:a:0?"]
-    cmd += ["-c:v", "libx264", "-preset", preset, "-crf", "22", "-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(output_file)]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode or not output_file.exists():
-        raise RuntimeError(f"FFmpeg render failed: {proc.stderr[-2000:]}")
-    metadata = {
-        "asset_id": asset_id, "rendered_utc": datetime.now(timezone.utc).isoformat(),
-        "category": asset.get("category"), "title": asset.get("title"),
-        "description": asset.get("description", ""), "rights_basis": asset.get("rights_basis"),
-        "rights_evidence": asset.get("rights_evidence"), "source_video_url": asset.get("source_video_url", ""),
-        "source_owner": asset.get("owner", ""), "publish_approved": asset.get("publish_approved"),
-        "file": str(output_file), "duration_seconds": seconds, "captions_included": bool(has_captions),
-        "original_commentary_included": bool(commentary),
-    }
-    (output / f"{safe_name(asset_id)}.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    return output_file
+    layout = (asset.get("layout") or cfg["layout"]).strip()
+    mix = (asset.get("mix_mode") or ("duck" if basis in THIRD_PARTY else "source")).strip()
+    OUT.mkdir(parents=True, exist_ok=True)
+    outputs = []
+    plans = plan_ranges(asset, source, start, end)
+    for n, plan in enumerate(plans, 1):
+        a, b = float(plan["start"]), float(plan["end"])
+        if b > actual + 0.25:
+            raise RuntimeError(f"Clip end {b}s exceeds source duration {actual:.2f}s")
+        oid = safe_name(asset_id if len(plans) == 1 else f"{asset_id}_c{n}")
+        dur = b - a
+        hook = (asset.get("hook_text") or "").strip()
+        credit = f"Footage: {asset.get('owner')}" + (" (CC BY)" if basis == "cc_by" else "") if basis in THIRD_PARTY else ""
+        words = _words_for(asset, a, b)
+        ass = OUT / f"{oid}.ass"
+        build_ass(words, ass, w, h, cfg["font"], cfg["caption_size"], hook, cfg["hook_seconds"], credit, dur,
+                  cfg["max_words_per_caption"])
+        if words:
+            write_srt([(x, y, t) for x, y, t in words], OUT / f"{oid}.srt")
+        src_audio = has_audio(source)
+        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{a:.3f}", "-t", f"{dur:.3f}", "-i", str(source)]
+        if commentary:
+            cmd += ["-i", str(local_file(commentary))]
+        fc = layout_chain("0:v", layout, w, h, fps, "lv") + f";[lv]ass={ass.name}[v]"
+        lufs = loudnorm(cfg["loudness_lufs"])
+        if commentary and src_audio and mix == "duck":
+            fc += (f";[0:a]volume=0.22[bed];[1:a]apad,atrim=0:{dur:.3f}[vo];"
+                   f"[bed][vo]amix=inputs=2:duration=first:normalize=0,{lufs}[a]")
+        elif commentary:
+            fc += f";[1:a]apad,atrim=0:{dur:.3f},{lufs}[a]"
+        elif src_audio:
+            fc += f";[0:a]{lufs}[a]"
+        else:
+            fc += f";anullsrc=r=48000:cl=stereo,atrim=0:{dur:.3f}[a]"
+        out_file = OUT / f"{oid}.mp4"
+        cmd += ["-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", f"{dur:.3f}",
+                *encode_args(cfg["crf"], preset, fps), out_file.name]
+        run(cmd, cwd=OUT)  # cwd trick: ASS path has no drive colon -> no Windows escaping issues
+        meta = {
+            "output_id": oid, "asset_id": asset_id, "kind": "clip", "rendered_utc": datetime.now(timezone.utc).isoformat(),
+            "category": asset.get("category"), "title": (asset.get("title") or "").strip() + (f" (Part {n})" if len(plans) > 1 else ""),
+            "description": asset.get("description", ""), "tags": [t.strip() for t in (asset.get("tags") or "").split("|") if t.strip()],
+            "rights_basis": basis, "rights_evidence": asset.get("rights_evidence"),
+            "source_video_url": asset.get("source_video_url", ""), "source_owner": asset.get("owner", ""),
+            "file": str(out_file), "duration_seconds": round(dur, 2), "range": [a, b], "captions_included": bool(words),
+            "hook_text": hook, "layout": layout, "voice": "own" if commentary else None,
+            "source_audio": "ducked" if (commentary and mix == "duck") else ("none" if commentary else "full"),
+            "contains_realistic_synthetic_media": False, "highlight_reason": plan.get("hook_line", ""),
+        }
+        meta["originality_score"], meta["originality_reasons"] = originality(meta, published_titles)
+        (OUT / f"{oid}.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        from .state import record_render
+        record_render(oid, asset_id, "clip", str(out_file), meta["title"], meta["originality_score"], meta)
+        outputs.append(out_file)
+    return outputs

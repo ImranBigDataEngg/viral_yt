@@ -1,143 +1,159 @@
-# TrendTide 60 — Automated Viral-Topic-to-Original-Shorts Studio
+# TrendTide — Implementation Plan v2 (supersedes v1 "TrendTide 60")
 
-**Project:** `auto_viral_YT`  
-**Target Windows workspace:** `D:\auto_viral_YT\`  
-**Repository:** https://github.com/ImranBigDataEngg/viral_yt  
-**Plan date:** 2026-11-19  
-**Primary goal:** build a low-cost, scalable, copyright-conscious creator workflow that can generate monetizable **original** short-form content about trending subjects.
+**Workspace:** `D:\auto_viral_YT\` · **Repo:** https://github.com/ImranBigDataEngg/viral_yt · **Revised:** 2026-11-19
+**Goal:** a near-zero-cost system that spots what's trending, turns it into *original* or *permissioned* Shorts,
+uploads them to your channel, and exports a download pack for TikTok/Instagram — while staying monetizable.
 
-## 1. Executive decision
+---
 
-Do **not** implement "download anyone's popular YouTube videos, snip, and automatically reupload" as the core monetization model. Public accessibility is not permission to redistribute footage, transcripts, music, performances, or game trailers. Attribution, a crop, a watermark, subtitles, and arbitrary speed changes do not grant rights or guarantee compliance with YouTube's reused-content rules.
+## 0. The one decision everything else depends on
 
-**Recommended strategy:** trend research -> editorial angle -> permitted/owned footage and source materials -> genuinely original commentary/explanation -> 9:16 render -> review -> YouTube Shorts publication -> download manifest for cross-posting -> analytics and iteration. A rights-compliant third-party clip can be incorporated when the specific right to edit, monetize, and redistribute it on each platform is documented. Do not assume fair use; it is case-dependent, and YouTube monetization review is independent of copyright clearance.
+**We do not download other creators' viral videos, clip them and re-upload them.** It's not a style choice:
 
-## 2. Branding and channel creation
+| What happens with "auto-clip + repost" | Why |
+|---|---|
+| Copyright claims → strikes → channel deleted (3 strikes) | Public ≠ licensed. Credit, cropping, speed changes don't create rights. |
+| Demonetized even without claims | YouTube's July 15 2025 update renamed "repetitious" to **"inauthentic content"** and targets mass-produced / reused uploads. |
+| Upload API refuses to make it public | Uploads from an API project that hasn't passed YouTube's **compliance audit** are locked **private**; the audit reviews ToS compliance. A repost bot won't pass. |
+| Downloading itself breaches YouTube's Terms | Only YouTube-provided features or rights-holder permission allow downloads. |
 
-- **Proposed display name:** **TrendTide 60**. Pronounced "trend tide sixty"; it covers any category without promising stolen viral content. Proposed handle: `@TrendTide60` (**availability unverified; reserve manually**).
-- **Tagline:** Today's biggest trends. Explained in 60 seconds.
-- **Positioning:** explain *why* a clip, reveal, product, game, cultural moment or news item is trending. Give original perspective; avoid unverified claims.
-- **Initial three playlists:** Gaming & GTA; AI & Technology; Viral Culture & Entertainment.
-- **Channel description:** "TrendTide 60 breaks down the biggest stories in gaming, AI, technology, and internet culture in quick, original, easy-to-follow videos. New explainers, facts, context, and trend breakdowns. Independent commentary; source credits in each description."
-- **Channel creation is manual:** Sign in to YouTube with the intended Google account, create a channel, verify, reserve a handle, add brand assets and channel description, enable 2-factor authentication, and review community/copyright settings. YouTube Data API does not provide a general channel-creation endpoint. This project cannot silently create or own your YouTube account.
+**What we automate instead (same "trend → clips → upload → cross-post" loop, legally):**
 
-## 3. Project scope and implementation status
-
-| Phase | Deliverable | Current repository status | Gate |
-|---|---|---|---|
-| P0 | GitHub repo, docs, master prompt, Windows setup | Included | Local extraction required |
-| P1 | YouTube official-API trend search; 10 ranked ideas per category; CSV/JSON | Implemented | User's YouTube Data API key |
-| P2 | Explicit permission ledger for local footage; captions from owned files / local speech recognition | Implemented | Rights evidence and approved asset |
-| P3 | FFmpeg 9:16 MP4 creation, optional narration mixing, downloadable manifest | Implemented | FFmpeg and authorized source footage |
-| P4 | OAuth YouTube upload as private; public upload behind explicit gate | Implemented, unverified against live account | Local OAuth credentials and permission |
-| P5 | TikTok and Instagram auto-posting | Future integration only | Approved provider APIs / account permissions |
-| P6 | Workflow scheduling, retention data, higher quality selection, optional self-hosted dashboard | Starter scheduler included; advanced features planned | Persistent Windows machine or always-on runner |
-
-**Not yet completed:** live channel registration, live Google OAuth authorization, real API discovery, third-party account authorization, live published Shorts, and live analytics results. Do not report these as accomplished.
-
-## 4. End-to-end flow
-
-```mermaid
-flowchart TD
- A[Official YouTube Data API] --> B[Top 10 ranked trend ideas per category]
- B --> C[Editorial research and original script]
- D[Authorized local video assets and proof] --> E[Permission and approval gate]
- C --> E
- E --> F[Owned caption file or optional local transcription]
- F --> G[Original voiceover plus FFmpeg vertical render]
- G --> H[MP4, captions, credits and CSV export]
- H --> I{Human publication approval?}
- I -- No --> J[Review queue]
- I -- Yes --> K[YouTube OAuth private upload]
- K --> L{Explicit public-release flag?}
- L -- Yes --> M[Public Short]
- L -- No --> N[Private draft]
- H --> O[Manual TikTok and Instagram upload or approved scheduler]
- M --> P[Performance review and content iteration]
+```
+          ┌───────────── TREND RADAR (official API, read-only) ─────────────┐
+          │ search lane · chart lane (mostPopular) · CC-BY lane · outliers   │
+          └───────────────┬──────────────────────────────┬──────────────────┘
+                          ▼                              ▼
+          LANE A — ORIGINAL EXPLAINERS          LANE B — PERMISSIONED CLIPPING
+          trend → brief (script w/ [VERIFY])    long-form you OWN, or with written
+          → you fact-check & approve            PERMISSION / licence / CC BY / public domain
+          → voice (yours or Piper TTS)          → transcript → auto highlight finder
+          → captions + motion bg / own b-roll   → 9:16 blur-fit + captions + YOUR voice-over
+                          └──────────────┬───────────────┘
+                                         ▼
+                ORIGINALITY GATE (score ≥ 70) + per-item approval + daily cap (3)
+                                         ▼
+               YouTube upload (private → scheduled/public) · Drive links · gallery + CSV
+                                         ▼
+                        Analytics loop (Studio / Windsor.ai YouTube connector)
 ```
 
-## 5. Trend discovery specification
+Lane B is the honest version of "clip long videos into viral Shorts". Good permissioned sources:
+your own streams/gameplay recordings (check the game publisher's video policy), podcasts/streamers who
+**explicitly invite clippers** (many run paid clipping campaigns — get the terms in writing), YouTube videos
+uploaded under **CC BY** (found automatically by the `cc` lane; obtain the file from the creator or
+a source they provide, credit them), and public-domain footage (e.g. most NASA media — check each item).
 
-**Categories:** gaming, AI, technology, entertainment, and internet culture. Seed terms in `config/topics.json`, including GTA 6. These are *queries*, not claims that GTA 6 currently dominates the charts.
+---
 
-- Query `search.list` with `q`, `type=video`, `publishedAfter` (7-day rolling by default), and `order=viewCount`; then enrich returned IDs with `videos.list(part=snippet,statistics,contentDetails)`.
-- Derive relative velocity = viewCount/max(hours since publication, 1), rank with engagement signal, time recency, and avoid duplicate video IDs.
-- Record search metadata, source link, published timestamp, view/like/comment counts, rank, score, description, creator and search term. Display "ranked candidate", not verified viral status.
-- Return up to 10 items per category, not a hard guarantee of 10 matches. Store original records and score assumptions.
-- Data API quotas: `search.list` costs 100 units; `videos.list` typically 1 unit. Start at 5 searches/day plus enrichment rather than hundreds; monitor actual quota in Google Cloud. `mostPopular` is a separate chart signal but changed in July 2025, so do not equate it to the discontinued Trending Now tab.
-- Rate-limit, retry transient failures (429/5xx), deduplicate, and avoid scraping or bypassing API restrictions.
+## 1. Drawbacks found in v1 and how v2 fixes them
 
-## 6. Asset rights and script governance
+| # | v1 drawback | Impact | v2 fix (status) |
+|---|---|---|---|
+| 1 | Name "TrendTide 60": the number is ambiguous to say/search ("sixty" vs "60") and locks format to 60 s | Weaker brand recall & search | **TrendTide** (`@TrendTide`), fallbacks `@TrendTideHQ`, `@TrendTideShorts`, `@GetTrendTide` ✅ |
+| 2 | Quota facts outdated (said search = 100 units) | Wrong capacity planning | Since **Jun 1 2026** `search.list` and `videos.insert` have their own quota buckets; upload cost fell from ~1,600 to ~100 units (Dec 2025). Planner logs per-run call counts ✅ |
+| 3 | Assumed `--publish` works | Uploads silently locked private | Plan step: **apply for the API compliance audit in week 1**; until approved, upload private and publish manually in Studio / use the gallery for manual upload ✅ |
+| 4 | No synthetic-media flag | Policy gap | `status.containsSyntheticMedia` set from brief/ledger ✅ |
+| 5 | No content engine — user had to hand-make everything | Not "automated" | Brief generator (template or local Ollama), Piper/flite TTS, word-timed captions, motion background composer ✅ |
+| 6 | Single highlight, keyword-only scoring, could cut mid-sentence | Weak clips | Multi-clip DP selector: sentence-bounded, complete-thought endings, pacing, hook words, audio-energy peaks ✅ |
+| 7 | Center-crop only | 16:9 gameplay loses HUD/text | `blurfit` layout (full frame over blurred fill) + `crop` ✅ |
+| 8 | Commentary *replaced* source audio | Unnatural | `duck` mix: source at −13 dB under your voice; EBU R128 loudness −14 LUFS ✅ |
+| 9 | Static small subtitles | Lower retention | Animated 1–3-word captions, active-word highlight, hook title card, credit line ✅ |
+| 10 | No state → duplicate work, no caps | Re-renders, spam risk | SQLite state: seen candidates, renders, uploads, shares; idempotent; daily upload cap ✅ |
+| 11 | Discovery: one lane, no outlier signal | Misses breakouts | 3 lanes + outlier ratio (views ÷ channel subs) + `angle_hint` for an original take ✅ |
+| 12 | Monetization gate = 2 booleans | Reused content could pass | **Originality score** (voice, footage ownership, transformation, duplicate titles) must be ≥ 70 to go public ✅ |
+| 13 | Only `file:///` links | Can't download on phone | Optional Google Drive (`drive.file` scope) share links + offline HTML gallery with copy-ready TikTok/IG captions ✅ |
+| 14 | Schedules only discovery; job missed if PC asleep | Gaps | `trendtide run` full cycle; Task Scheduler with `StartWhenAvailable`/`WakeToRun` ✅ |
+| 15 | Revenue section outdated | Wrong expectations | Updated YPP thresholds incl. **Feb 1 2027** changes (§7) → long-form added to strategy ✅ |
+| 16 | No CI | Regressions | GitHub Actions runs tests + FFmpeg smoke render ✅ |
 
-`media/authorized/assets.csv` records `asset_id`, `source_file`, `rights_basis`, `rights_evidence`, optional external source URL, caption and commentary files, clip boundaries, and `approved` / `publish_approved`. Only `original`, `licensed`, `public_domain`, and `cc_by` are accepted rights categories. `rights_evidence` is mandatory; content in a list is not automatically verified as legal.
+---
 
-**Editorial rules:** independently verify important facts; cite sources in descriptions; write your own hook, explanation, examples, and takeaway. Add voiceover/analysis where possible. Avoid misleading titles, AI-generated fake breaking news, fake celebrity endorsements, unlicensed music, and defamatory allegations. Disclose realistic altered/synthetic content as required by each platform.
+## 2. Brand & channel (manual — needs your Google account)
 
-**Transcript handling:** The YouTube captions API is not a universal transcript service; downloading caption tracks typically requires permission to edit the video. For authorized local files, provide your own `.srt`, or optionally transcribe them offline using `faster-whisper` with its model-download caveat. Never treat online transcript availability as permission to reuse it or the video.
+- **Name:** TrendTide · **Handle:** `@TrendTide` (check in YouTube; fallbacks above) · **Tagline:** *The story behind what's trending.*
+- Why: two short common words, alliterative, instantly says "trends", no numbers/odd spelling, works on TikTok/IG too.
+- Setup checklist and brand kit: [`docs/CHANNEL_KIT.md`](docs/CHANNEL_KIT.md). Channel creation, handle, verification
+  (phone — unlocks custom thumbnails/longer videos), 2FA and **Brand Account** (so you can add managers later) are done
+  by you in YouTube; no API can create a channel.
 
-## 7. Rendering, export, and publishing
+## 3. Lanes & modules (all implemented in `src/viral_yt/`)
 
-- Default clip target: 20–60 seconds, adjustable 6–180 seconds subject to Shorts policy and edit quality. 1080×1920, H.264/AAC MP4, 30 FPS, portrait center-crop; optional hard-subtitles if SRT available.
-- Persist all results and upload records outside GitHub (`output/` and `media/` are gitignored). Generate `output/manifests/download_manifest.csv` containing Windows-friendly local file URIs. These **are not remotely downloadable** unless you separately upload assets to a storage service and set up access-controlled links.
-- Upload with OAuth desktop application, minimal `youtube.upload` scope, separate `.secrets/client_secret.json` and `.secrets/token.json` not committed. Default upload privacy is `private`; `--execute` is required for a real network upload; `--publish` additionally demands `publish_approved=true`.
-- Publishing to TikTok/Instagram is **not** implemented. Later use official supported APIs or an approved scheduler, verify the rights and music rules for each destination, and never rely on browser credential automation.
+| Module | Does |
+|---|---|
+| `discovery.py` | search / chart / CC lanes, enrichment, outlier ratio, dedupe, CSV+JSON, call counter |
+| `scriptgen.py` | brief per top candidate: 3 hooks, structured script, titles, tags, `[VERIFY]` blockers |
+| `tts.py` | Piper (natural, local) → FFmpeg flite fallback; your own WAV preferred |
+| `captions.py` | ASS animated captions, hook card, credit |
+| `composer.py` | explainer render (voice + captions + own/licensed b-roll or generated motion bg) |
+| `highlights.py` | multi-clip selection from transcript + audio energy |
+| `clipper.py` | permissioned clip render, layouts, ducking, loudness, sidecar |
+| `rights.py` | ledger validation: basis ∈ original/licensed/permission/cc_by/public_domain + evidence + credit + voice-over for 3rd-party |
+| `originality.py` | 0–100 monetization-readiness score with reasons |
+| `publisher.py` | dry-run → private → scheduled/public; tags, credits, synthetic flag, cap, idempotent |
+| `share.py` | Google Drive links (optional) |
+| `manifest.py` | download CSV + HTML gallery with platform captions |
+| `pipeline.py` / `cli.py` | `trendtide run` and per-step commands |
 
-## 8. Windows deployment and operation
+## 4. Daily operating rhythm (≈30–45 min of human time)
 
-1. Download or clone this repo into `D:\auto_viral_YT\`.
-2. Install Python 3.11+ and FFmpeg (`winget install Gyan.FFmpeg` where available), ensure `ffmpeg` and `ffprobe` are in PATH.
-3. Run `powershell -ExecutionPolicy Bypass -File .\scripts\install_windows.ps1` from the project directory.
-4. Set `YOUTUBE_API_KEY` in `.env` after enabling YouTube Data API v3 in a Google Cloud project.
-5. Run `python -m viral_yt.cli discover --top 10` to create trend CSV/JSON.
-6. Populate `media\authorized\assets.csv` from `examples\assets_template.csv` with **local source files you own or have documented authorization to reuse**.
-7. Run `python -m viral_yt.cli render --asset-id YOUR_ID` and `python -m viral_yt.cli manifest`.
-8. For upload, configure Google OAuth desktop client in `.secrets`, run `python -m viral_yt.cli upload --asset-id YOUR_ID` for validation then add `--execute` to upload privately. Add `--publish` only with confirmed publication approval.
-9. Schedule safe discovery with `scripts\schedule_discovery.ps1` using Windows Task Scheduler; keep publishing as separate approval-gated command.
+1. **Auto 09:17** — `run`: discover → briefs (3/category) → render anything approved → manifest.
+2. **You (20 min)** — open `output/briefs/*.json`, pick 2–3, verify facts, add your opinion, set `"approved": true`.
+   Optionally record your voice (phone is fine) → `voice_file`.
+3. **You (10 min)** — for Lane B, add permission evidence + `approved=true` in `media/authorized/assets.csv`.
+4. `trendtide run --no-discover --execute` renders and uploads **private**; review in Studio; set `publish_approved`
+   and `trendtide upload --id X --execute --publish-at 2026-11-21T14:00:00Z` (after audit) or publish in Studio.
+5. Open `output/manifests/index.html` on your PC/phone → download MP4 + copy caption → post to TikTok/IG
+   (upload natively, no watermark; add trending audio *inside* each app from its licensed library).
 
-**Caution:** A Windows desktop can run a scheduled job only while powered on/available; GitHub Actions are not a free unlimited video-render farm and secrets must never be committed. An always-on computer/server is required for truly unattended local rendering.
+## 5. Quota & cost (verify in Google Cloud Console → Quotas)
 
-## 9. Quality and acceptance criteria
+- Default project quota 10,000 units/day; search & upload now billed in separate buckets (Jun 2026).
+  Default config: 5 categories × ~2–3 terms × 2 search lanes ≈ 25–30 search calls + ~5 chart + a few enrich/channel calls.
+- Everything else is free and local: FFmpeg, Python, Piper, faster-whisper, Ollama. Drive: 15 GB free.
 
-- [x] Repo plan and master prompt supplied
-- [x] Python package, CLI, example manifest, tests, and environment template
-- [x] Trend discovery returns candidates and writes CSV/JSON (requires live API key)
-- [x] FFmpeg clip generator accepts locally authorized video and exports manifest
-- [x] Upload requires explicit execution and publication approval; default private
-- [ ] Actual YouTube channel and handle reserved
-- [ ] User's Google OAuth keys configured and live upload tested
-- [ ] A genuinely original first GTA 6 commentary Short created from cleared material
-- [ ] Publishing and monetization policy reviewed for each clip
-- [ ] Instagram/TikTok official API integration and monitoring added
-- [ ] 30-day metrics review and retention-driven content experiments
+## 6. Status (be honest about what is proven)
 
-## 10. Growth and monetization roadmap
+| Item | Status |
+|---|---|
+| All modules above, CLI, tests (12), synthetic end-to-end demo | **Implemented & tested locally** (Linux, FFmpeg 7) |
+| Windows install / scheduler scripts | Implemented — **needs run on your PC** |
+| Live discovery | Needs your `YOUTUBE_API_KEY` |
+| Upload / Drive share | Implemented — **needs your OAuth client + live verification** |
+| Public uploads via API | **Blocked until API audit approved** |
+| Channel + handle | **Manual — not created by this system** |
+| TikTok / Instagram auto-post | Not implemented (export pack instead). TikTok Content Posting API and Instagram Graph API (Reels, Business account) both require app review — add in phase 3 if volume justifies |
 
-**Week 1:** channel setup, 3 topic verticals, 15 independent scripts, 5 polished Shorts and 1 original 5–8 minute explainer. Avoid 10 copies of the same formula or creator's footage.  
-**Weeks 2–4:** 1–2 original Shorts per day if sustainable, measured hooks, titles, first 3 seconds, average view duration and subscribers per 1,000 views. Test series and CTA, source credits and clearance.  
-**Months 2–3:** one weekly long explainer to build watch-hours, sponsorship/affiliate options with disclosures, optimize based on analytics and channel value, and apply for YouTube Partner Program when eligibility thresholds and policy review are satisfied. **No income is guaranteed.**
+## 7. Monetization reality (checked Nov 2026)
 
-As of Nov 2026, a common full Shorts-ad revenue YPP path requires 1,000 subscribers and 10 million qualified public Shorts views in 90 days; an alternative long-form pathway uses 4,000 public watch hours in 12 months. Earlier tier eligibility and feature eligibility differ. Check YouTube Studio Earn for local/current details. Shorts Feed watch time does not count toward the 4,000 long-form hours.
+- **Today:** fan funding/Shopping tier = 500 subs + 3 public uploads/90 d + 3,000 watch h (12 mo) **or** 3 M Shorts views (90 d).
+  Ads = 1,000 subs + 4,000 h **or** 10 M Shorts views (90 d).
+- **From Feb 1 2027 (new applicants):** 8,000 h **or** 20 M Shorts views; and *every* channel needs 10 M Shorts views in
+  the trailing 90 days to receive Shorts-pool revenue that month.
+- **Implication:** a Shorts-only channel will very likely not earn ad revenue in year one. v2 strategy:
+  Shorts for discovery → **one 6–10 min long-form explainer per week** (watch hours) → Tier-1 features (memberships,
+  Shopping/affiliate links with disclosure) → brand deals. No income is guaranteed.
 
-## 11. Risk register
+## 8. Roadmap
+
+- **Week 1:** create channel & brand kit; Google Cloud project, API key, OAuth client; **submit API audit**; run demo;
+  first 5 Shorts (Lane A) + 1 long-form.
+- **Weeks 2–4:** 1–2 Shorts/day max (cap 3); collect 3–5 permissioned sources for Lane B; A/B hooks; kill weak categories.
+- **Month 2–3:** weekly long-form; optional Ollama briefs, Drive links, Windsor.ai analytics review; consider
+  official TikTok/IG APIs.
+
+## 9. Risk register
 
 | Risk | Mitigation |
 |---|---|
-| Copyright claims or strikes | Evidence ledger; cleared footage, music, voices; platform-specific license checks |
-| Reused/mass-produced content rejection | Original scripts, narration, insight, editing; editorial review |
-| API limitations or quota burn | Low-cost batching, dry runs, cache files, 5 searches/day starting point |
-| Compromised OAuth tokens | `.secrets/` out of repo, least privilege, credential rotation, no password scraping |
-| Platform upload changes | Official documented APIs, manual fallback, isolated uploader module |
-| AI misinformation | Source checking, disclosure, human release approval |
-| Storage fill/disk wear | Local retention window, backups, quotas, archive output externally |
-| 0 views/revenue | Experiment with audience niches and publish long-form original videos too |
+| Strikes / claims | Rights ledger + evidence files; no third-party media without basis; music only from YouTube Audio Library / in-app libraries |
+| "Inauthentic content" demonetization | Originality gate, daily cap, human approval, own voice preferred, varied formats |
+| Misinformation / defamation | `[VERIFY]` blockers, sources in description, no rumours as facts ("Myth vs Confirmed" format) |
+| API audit delay | Private uploads + manual publish meanwhile |
+| Token leak | `.secrets/` gitignored, narrow scopes (`youtube.upload`, `drive.file`), revoke at myaccount.google.com/permissions |
+| PC off at schedule | `StartWhenAvailable`; or later an always-on box (old laptop, or a free-tier cloud VM) |
 
-## 12. References (reviewed 2026-11-19)
-
-- YouTube channel monetization policy: https://support.google.com/youtube/answer/1311392
-- YouTube Partner Program: https://support.google.com/youtube/answer/72851
-- YouTube API quota calculator: https://developers.google.com/youtube/data/determine_quota_cost
-- YouTube Data API search.list: https://developers.google.com/youtube/v3/docs/search/list
-- YouTube Data API videos.list: https://developers.google.com/youtube/v3/docs/videos/list
-- YouTube Data API videos.insert: https://developers.google.com/youtube/v3/docs/videos/insert
-- YouTube captions.download restrictions: https://developers.google.com/youtube/v3/docs/captions/download
-- Shorts upload guidance: https://support.google.com/youtube/answer/12779649
+## References
+YouTube monetization policies (support.google.com/youtube/answer/1311392) · YPP (answer/72851) ·
+Data API revision history (developers.google.com/youtube/v3/revision_history) · videos.insert ·
+search.list `videoLicense` · Creative Commons on YouTube (answer/2797468).
