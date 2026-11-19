@@ -117,8 +117,14 @@ class TestCore(unittest.TestCase):
                 validate_asset({**base, "rights_basis": "cc_by"})
             with self.assertRaisesRegex(RightsError, "publish_approved"):
                 validate_asset(base, require_publish=True)
-            with self.assertRaisesRegex(RightsError, "transcript_file"):
-                validate_asset({**base, "clip_ranges": "auto"})
+            # clip_ranges=auto needs a transcript OR faster-whisper; simulate "not installed" so the result
+            # doesn't depend on which optional packages this machine has
+            from unittest import mock
+            with mock.patch("importlib.util.find_spec", return_value=None):
+                with self.assertRaisesRegex(RightsError, "transcript_file"):
+                    validate_asset({**base, "clip_ranges": "auto"})
+            with mock.patch("importlib.util.find_spec", return_value=object()):
+                validate_asset({**base, "clip_ranges": "auto"})          # ASR available -> allowed
             self.assertEqual(parse_ranges("10-40; 60-90"), [(10.0, 40.0), (60.0, 90.0)])
 
     def test_brief_blocks_until_verified(self):
