@@ -48,6 +48,8 @@ def _progress(db: DB, jid: str):
 
 def process(db: DB, data_dir: Path, job: dict) -> None:
     from ..ingest import IngestError, LiveNotFinished
+    from ..social.http import PlatformError
+    from ..transform import TransformError
     spec = json.loads(job["spec"])
     jid, uid = job["id"], job["user_id"]
     say = _progress(db, jid)
@@ -77,10 +79,32 @@ def process(db: DB, data_dir: Path, job: dict) -> None:
             db.run("UPDATE outputs SET title=?, duration=? WHERE id=? AND user_id=?",
                    (meta["title"], meta["duration_seconds"], out["id"], uid))
             db.run("UPDATE jobs SET status='done', progress='render complete', updated=? WHERE id=?", (now(), jid))
+        elif job["kind"] in ("dub", "take"):
+            from ..transform import dub, make_original
+            out = db.one("SELECT * FROM outputs WHERE id=? AND user_id=?", (spec["output_id"], uid))
+            if not out:
+                raise IngestError("Clip not found")
+            out_dir = Path(out["meta_file"]).parent
+            say("translating & voicing" if job["kind"] == "dub" else "recording your take")
+            if job["kind"] == "dub":
+                meta = dub(out["id"], spec["lang"], out_dir, record=False)
+            else:
+                vf = Path(spec["voice_file"]) if spec.get("voice_file") else None
+                meta = make_original(out["id"], spec.get("take", ""), out_dir, voice_file=vf, record=False)
+            db.run("INSERT OR REPLACE INTO outputs VALUES (?,?,?,?,?,?,?,?,?)",
+                   (meta["output_id"], uid, out["job_id"], meta["title"], meta["ratio"], meta["duration_seconds"],
+                    meta["file"], str(Path(meta["file"]).with_suffix(".json")), now()))
+            db.run("UPDATE jobs SET status='done', progress=?, updated=? WHERE id=?",
+                   (f"created {meta['output_id']}", now(), jid))
+        elif job["kind"] == "publish":
+            from .publishing import run_publish
+            n_ok, n_err = run_publish(db, uid, jid, spec, say)
+            db.run("UPDATE jobs SET status=?, progress=?, updated=? WHERE id=?",
+                   ("done" if n_ok else "failed", f"{n_ok} posted, {n_err} failed", now(), jid))
     except LiveNotFinished as exc:
         db.run("UPDATE jobs SET status='waiting', progress=?, not_before=?, updated=? WHERE id=?",
                (str(exc), now() + RETRY_LIVE_S, now(), jid))
-    except (IngestError, ValueError) as exc:
+    except (IngestError, ValueError, TransformError, PlatformError) as exc:
         db.run("UPDATE jobs SET status='failed', error=?, progress='failed', updated=? WHERE id=?", (str(exc)[:500], now(), jid))
     except Exception:
         log.error("job %s crashed: %s", jid, traceback.format_exc())

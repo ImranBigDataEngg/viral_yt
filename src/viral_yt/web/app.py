@@ -325,9 +325,21 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
                 o["has_poster"] = bool(meta.get("poster"))
             except (OSError, ValueError):
                 o["hook"], o["score"], o["scores"], o["has_poster"] = "", None, {}, False
+        for o in outs:
+            try:
+                m = json.loads(Path(o["meta_file"]).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                m = {}
+            o["language"], o["dubbed"], o["take"] = m.get("language", ""), bool(m.get("dubbed_from")), bool(m.get("added_commentary"))
+            o["posts"] = db.all("SELECT platform, handle, status, url, error FROM posts WHERE user_id=? AND output_id=? "
+                                "ORDER BY created DESC", (u["id"], o["id"]))
         outs.sort(key=lambda o: (-(o["scores"].get("overall") or 0), o["id"]))
+        from ..transform import LANGS, available_languages
+        from .publishing import accounts
+        langs = available_languages()
         spec = json.loads(job["spec"])
-        return page(req, "job.html", {"job": job, "outputs": outs, "label": spec.get("url") or spec.get("upload_name")})
+        return page(req, "job.html", {"job": job, "outputs": outs, "label": spec.get("url") or spec.get("upload_name"),
+                                      "accounts": accounts(db, u["id"]), "langs": LANGS, "langs_ready": langs})
 
     async def api_job(req: Request):
         s, u = require_user(req)
@@ -441,6 +453,121 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         mt = {".mp4": "video/mp4", ".jpg": "image/jpeg"}.get(path.suffix, "text/plain; charset=utf-8")
         return FileResponse(path, media_type=mt, headers=headers)
 
+
+    # ---------------------------------------------------------------- social accounts & publishing
+    async def social_connect(req: Request):
+        s, u = require_user(req)
+        await form_checked(req, s)
+        from ..social.http import PlatformError
+        from .publishing import oauth_start
+        try:
+            url, state = oauth_start(req.path_params["platform"], cfg.base_url)
+        except PlatformError as exc:
+            return RedirectResponse("/account?msg=" + urllib.parse.quote(str(exc)), 303)
+        from itsdangerous import URLSafeTimedSerializer
+        resp = RedirectResponse(url, 303)
+        resp.set_cookie("tt_social", URLSafeTimedSerializer(cfg.secret_key, "social").dumps({**state, "u": u["id"]}),
+                        max_age=600, httponly=True, secure=cfg.secure_cookies, samesite="lax", path="/social")
+        return resp
+
+    async def social_callback(req: Request):
+        s, u = require_user(req)
+        platform = req.path_params["platform"]
+        from itsdangerous import BadSignature, URLSafeTimedSerializer
+        try:
+            data = URLSafeTimedSerializer(cfg.secret_key, "social").loads(req.cookies.get("tt_social", ""), max_age=600)
+        except BadSignature:
+            raise HTTPException(400, "Connection expired; try again")
+        if data["u"] != u["id"] or data["p"] != platform or not secrets.compare_digest(data["s"], req.query_params.get("state", "")):
+            raise HTTPException(400, "OAuth state mismatch")
+        if req.query_params.get("error"):
+            return RedirectResponse("/account?msg=" + urllib.parse.quote("Connection cancelled"), 303)
+        from ..social.http import PlatformError
+        from .publishing import adapter, save_account
+        try:
+            acct = await run_in_threadpool(adapter(platform).exchange, req.query_params.get("code", ""),
+                                           f"{cfg.base_url}/social/callback/{platform}", data["v"])
+            save_account(db, u["id"], platform, acct)
+            msg = f"Connected {acct.get('handle') or platform}"
+        except PlatformError as exc:
+            msg = f"Couldn't connect: {exc}"
+        resp = RedirectResponse("/account?msg=" + urllib.parse.quote(msg[:300]), 303)
+        resp.delete_cookie("tt_social", path="/social")
+        return resp
+
+    async def social_disconnect(req: Request):
+        s, u = require_user(req)
+        form = await form_checked(req, s)
+        db.run("DELETE FROM social_accounts WHERE id=? AND user_id=?", (form.get("id", ""), u["id"]))
+        return RedirectResponse("/account?msg=" + urllib.parse.quote(
+            "Disconnected. To fully revoke access, also remove the app in that platform's security settings."), 303)
+
+    async def api_publish(req: Request):
+        s, u = require_user(req)
+        api_checked(req, s)
+        if not billing.entitlement(db, u["id"]):
+            raise HTTPException(402, "An active plan is required")
+        from .publishing import validate_request
+        try:
+            spec = validate_request(db, u["id"], await req.json())
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        return JSONResponse({"job": enqueue(db, u["id"], "publish", spec)})
+
+    async def api_transform(req: Request):
+        s, u = require_user(req)
+        api_checked(req, s)
+        if not billing.entitlement(db, u["id"]):
+            raise HTTPException(402, "An active plan is required")
+        if security.rate_limited("transform:" + u["id"], 20, 3600):
+            raise HTTPException(429, "Too many requests, try again later")
+        out = owned_output(u, req.path_params["oid"])
+        body = await req.json()
+        kind = req.path_params["kind"]
+        from ..transform import LANGS
+        if kind == "translate":
+            lang = str(body.get("lang", ""))
+            if lang not in LANGS:
+                raise HTTPException(400, "Unsupported language")
+            jid = enqueue(db, u["id"], "dub", {"output_id": out["id"], "lang": lang})
+        elif kind == "take":
+            take = str(body.get("take", "")).strip()
+            if not 8 <= len(take) <= 300:
+                raise HTTPException(400, "Write your take in 8-300 characters")
+            jid = enqueue(db, u["id"], "take", {"output_id": out["id"], "take": take})
+        else:
+            raise HTTPException(404)
+        return JSONResponse({"job": jid})
+
+    async def api_suggest_take(req: Request):
+        s, u = require_user(req)
+        out = owned_output(u, req.path_params["oid"])
+        from ..transform import suggest_take
+        meta = json.loads(Path(out["meta_file"]).read_text(encoding="utf-8"))
+        return JSONResponse({"take": await run_in_threadpool(suggest_take, meta)})
+
+    async def media_zip(req: Request):
+        s, u = require_user(req)
+        ids = [i for i in (req.query_params.get("ids") or "").split(",") if i][:50]
+        if not ids:
+            raise HTTPException(400, "No clips selected")
+        files = []
+        for i in ids:
+            o = owned_output(u, i)
+            f = Path(o["file"])
+            if f.is_file():
+                name = "".join(ch for ch in (o["title"] or o["id"]) if ch.isalnum() or ch in " -_")[:50].strip() or o["id"]
+                files.append((f"{len(files) + 1:02d} {name} ({o['ratio'].replace(':', 'x')}).mp4", f))
+        if not files:
+            raise HTTPException(404)
+        import tempfile
+        from starlette.background import BackgroundTask
+        from ..transform import zip_outputs
+        tmp = Path(tempfile.mkstemp(suffix=".zip")[1])
+        await run_in_threadpool(zip_outputs, files, tmp)
+        return FileResponse(tmp, media_type="application/zip", filename=f"{BRAND.replace(' ', '')}-clips.zip",
+                            background=BackgroundTask(tmp.unlink, missing_ok=True))
+
     # ---------------------------------------------------------------- billing
     async def billing_page(req: Request):
         s, u = require_user(req)
@@ -513,7 +640,12 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
                 db.run("DELETE FROM channels WHERE user_id=? AND channel_id=?", (u["id"], form.get("channel_id", "")))
                 msg = "Channel removed."
         channels = db.all("SELECT * FROM channels WHERE user_id=?", (u["id"],))
-        return page(req, "account.html", {"channels": channels, "msg": msg,
+        from .publishing import accounts, adapter
+        socials = accounts(db, u["id"])
+        platforms = [{"key": k, "label": adapter(k).label, "configured": adapter(k).configured(),
+                      "accounts": [a for a in socials if a["platform"] == k]} for k in ("youtube", "instagram", "tiktok")]
+        msg = msg or req.query_params.get("msg")
+        return page(req, "account.html", {"channels": channels, "msg": msg, "platforms": platforms,
                                           "google": Path(cfg.google_web_client).is_file() or (Path.cwd() / cfg.google_web_client).is_file()})
 
     def _google_flow(state: str | None = None):
@@ -609,7 +741,14 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         Route("/api/jobs/{jid:str}", api_job), Route("/api/outputs/{oid:str}", api_output),
         Route("/api/outputs/{oid:str}/preview", api_preview, methods=["POST"]),
         Route("/api/outputs/{oid:str}/render", api_render, methods=["POST"]),
+        Route("/media/zip", media_zip),
         Route("/media/{oid:str}/{variant:str}", media),
+        Route("/social/connect/{platform:str}", social_connect, methods=["POST"]),
+        Route("/social/callback/{platform:str}", social_callback),
+        Route("/social/disconnect", social_disconnect, methods=["POST"]),
+        Route("/api/publish", api_publish, methods=["POST"]),
+        Route("/api/outputs/{oid:str}/suggest-take", api_suggest_take),
+        Route("/api/outputs/{oid:str}/do/{kind:str}", api_transform, methods=["POST"]),
         Route("/billing", billing_page), Route("/billing/checkout", billing_checkout, methods=["POST"]),
         Route("/billing/portal", billing_portal, methods=["POST"]),
         Route("/billing/dev-activate", billing_dev_activate, methods=["POST"]),

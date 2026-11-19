@@ -29,6 +29,13 @@ CREATE TABLE IF NOT EXISTS outputs (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL, job_id TEXT NOT NULL, title TEXT, ratio TEXT, duration REAL,
   file TEXT NOT NULL, meta_file TEXT NOT NULL, created REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS outputs_job ON outputs(user_id, job_id);
+CREATE TABLE IF NOT EXISTS social_accounts (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, platform TEXT NOT NULL, account_id TEXT NOT NULL, handle TEXT,
+  token_enc TEXT NOT NULL, created REAL NOT NULL, UNIQUE(user_id, platform, account_id));
+CREATE TABLE IF NOT EXISTS posts (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, output_id TEXT NOT NULL, platform TEXT NOT NULL, account_id TEXT,
+  handle TEXT, status TEXT NOT NULL, remote_id TEXT, url TEXT, error TEXT, created REAL NOT NULL, job_id TEXT);
+CREATE INDEX IF NOT EXISTS posts_out ON posts(user_id, output_id);
 CREATE TABLE IF NOT EXISTS stripe_events (id TEXT PRIMARY KEY, type TEXT, received REAL);
 CREATE TABLE IF NOT EXISTS login_failures (key TEXT NOT NULL, at REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS lf_key ON login_failures(key, at);

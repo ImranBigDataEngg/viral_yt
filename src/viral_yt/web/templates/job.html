@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Clips · {{ brand }}{% endblock %}
+{% block head %}<script src="/static/clips.js" defer></script>{% endblock %}
 {% block main %}
 <div class="page-head"><div><a class="link small" href="/app">← Projects</a><h1 class="trunc">{{ label }}</h1></div></div>
 <section class="progress card" id="jobstatus" data-job="{{ job.id }}" data-status="{{ job.status }}" data-progress="{{ job.progress or '' }}">
@@ -11,32 +12,97 @@
   <p class="muted small" id="jobprogress">{{ job.error or job.progress }}</p>
 </section>
 {% if outputs %}
-<div class="clips-head"><h2 class="sec-title">{{ outputs|length }} clips · best first</h2></div>
-<div class="clipgrid">
-  {% for o in outputs %}
-  <article class="clipcard ratio-{{ o.ratio.replace(':','x') }}">
-    <div class="vid">
-      <video src="/media/{{ o.id }}/mp4" {% if o.has_poster %}poster="/media/{{ o.id }}/poster"{% endif %} controls preload="none" playsinline></video>
-      <span class="ratio-tag">{{ o.ratio }}</span>
-    </div>
-    <div class="clip-body">
-      <div class="clip-top">
-        {% if o.scores.overall %}<span class="scorepill s{{ (o.scores.overall // 10) * 10 }}" title="Clip score (hook, flow, value)">{{ o.scores.overall }}</span>{% endif %}
-        <div><h3>{{ o.title or o.hook }}</h3><p class="muted small">{{ o.ratio }} · {{ '%.0f'|format(o.duration or 0) }} s</p></div>
+<div id="clipsapp" data-csrf="{{ csrf }}">
+  <div class="selbar card">
+    <label class="check"><input type="checkbox" id="selAll"> <b>Select all</b></label>
+    <span class="muted small" id="selCount">0 selected</span>
+    <span class="grow"></span>
+    <button class="btn sm ghost" id="zipBtn" type="button" disabled>⬇ Download selected</button>
+    <button class="btn sm" id="postBtn" type="button" disabled>🚀 Post selected</button>
+  </div>
+
+  <dialog id="postDlg" class="dlg">
+    <form method="dialog" class="stack" id="postForm">
+      <h2>Post <span id="postN">0</span> clip(s)</h2>
+      {% if accounts %}
+      <p class="muted small">Destinations: only accounts you've connected with the platform's own login.</p>
+      <div class="dest">
+        {% for a in accounts %}
+        <div class="destrow">
+          <label class="check"><input type="checkbox" name="acct" value="{{ a.id }}" data-platform="{{ a.platform }}">
+            <span class="plat {{ a.platform }}">{{ {'youtube':'YouTube','instagram':'Instagram','tiktok':'TikTok'}[a.platform] }}</span> {{ a.handle }}</label>
+          {% if a.platform == 'youtube' %}
+          <select data-privacy-for="{{ a.id }}" aria-label="YouTube visibility"><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select>
+          {% elif a.platform == 'tiktok' %}
+          <select data-privacy-for="{{ a.id }}" aria-label="Who can view this TikTok post"><option value="">Who can view? (required)</option>
+            <option value="PUBLIC_TO_EVERYONE">Everyone</option><option value="FOLLOWER_OF_CREATOR">Followers</option>
+            <option value="MUTUAL_FOLLOW_FRIENDS">Friends</option><option value="SELF_ONLY">Only me</option></select>
+          {% else %}<span class="muted small">Public Reel</span>{% endif %}
+        </div>
+        {% endfor %}
       </div>
-      {% if o.scores %}<ul class="minibars">
-        <li>Hook<i class="bar" data-w="{{ o.scores.hook }}"></i><b>{{ o.scores.hook }}</b></li>
-        <li>Flow<i class="bar" data-w="{{ o.scores.flow }}"></i><b>{{ o.scores.flow }}</b></li>
-        <li>Value<i class="bar" data-w="{{ o.scores.value }}"></i><b>{{ o.scores.value }}</b></li></ul>{% endif %}
-      <div class="row-btns">
-        <a class="btn sm" href="/media/{{ o.id }}/mp4?download=1">⬇ Download</a>
-        <a class="btn sm ghost" href="/app/review/{{ o.id }}">✎ Edit</a>
-        <a class="btn sm ghost" href="/media/{{ o.id }}/srt?download=1">SRT</a>
+      <label>Caption (used for all selected; title is each clip's own)<textarea id="caption" rows="3" maxlength="2200" placeholder="Leave empty to use each clip's title"></textarea></label>
+      <label class="check small"><input type="checkbox" id="consent"> I confirm these clips can be published to the selected accounts now.</label>
+      <p class="fine">Public posts need an originality score of 70+. TikTok apps that haven't passed TikTok's audit can only post privately, and YouTube uploads stay private until the API audit is approved.</p>
+      <div class="row-btns"><button class="btn" id="postGo" value="go" type="button">Publish</button><button class="btn ghost" value="cancel">Cancel</button></div>
+      <p class="small" id="postMsg"></p>
+      {% else %}
+      <p>No connected accounts yet.</p><a class="btn" href="/account#platforms">Connect YouTube, Instagram or TikTok</a>
+      <div class="row-btns"><button class="btn ghost" value="cancel">Close</button></div>
+      {% endif %}
+    </form>
+  </dialog>
+
+  <dialog id="takeDlg" class="dlg">
+    <form method="dialog" class="stack">
+      <h2>Make it original</h2>
+      <p class="muted small">Adds a short spoken intro with <b>your</b> take before the clip: context, an opinion, why it matters. This is what platforms reward as original commentary. Edit the suggestion so it's really yours.</p>
+      <textarea id="takeText" rows="3" maxlength="300"></textarea>
+      <div class="row-btns"><button class="btn" id="takeGo" type="button">Create original version</button><button class="btn ghost" value="cancel">Cancel</button></div>
+      <p class="small" id="takeMsg"></p>
+    </form>
+  </dialog>
+
+  <div class="clips-head"><h2 class="sec-title">{{ outputs|length }} clips · best first</h2></div>
+  <div class="clipgrid">
+    {% for o in outputs %}
+    <article class="clipcard ratio-{{ o.ratio.replace(':','x') }}" data-oid="{{ o.id }}">
+      <div class="vid">
+        <video src="/media/{{ o.id }}/mp4" {% if o.has_poster %}poster="/media/{{ o.id }}/poster"{% endif %} controls preload="none" playsinline></video>
+        <label class="pick"><input type="checkbox" class="sel" value="{{ o.id }}" aria-label="Select clip"><span></span></label>
+        <span class="ratio-tag">{{ o.ratio }}{% if o.language %} · {{ o.language|upper }}{% endif %}{% if o.take %} · TAKE{% endif %}</span>
       </div>
-    </div>
-  </article>
-  {% endfor %}
+      <div class="clip-body">
+        <div class="clip-top">
+          {% if o.scores.overall %}<span class="scorepill s{{ (o.scores.overall // 10) * 10 }}" title="Clip score (hook, flow, value)">{{ o.scores.overall }}</span>{% endif %}
+          <div><h3>{{ o.title or o.hook }}</h3><p class="muted small">{{ o.ratio }} · {{ '%.0f'|format(o.duration or 0) }} s{% if o.score is not none %} · originality {{ o.score }}{% endif %}</p></div>
+        </div>
+        {% if o.scores %}<ul class="minibars">
+          <li>Hook<i class="bar" data-w="{{ o.scores.hook }}"></i><b>{{ o.scores.hook }}</b></li>
+          <li>Flow<i class="bar" data-w="{{ o.scores.flow }}"></i><b>{{ o.scores.flow }}</b></li>
+          <li>Value<i class="bar" data-w="{{ o.scores.value }}"></i><b>{{ o.scores.value }}</b></li></ul>{% endif %}
+        <div class="row-btns">
+          <a class="btn sm" href="/media/{{ o.id }}/mp4?download=1">⬇ Download</a>
+          <a class="btn sm ghost" href="/app/review/{{ o.id }}">✎ Edit</a>
+          {% if not o.take %}<button class="btn sm ghost act-take" type="button" data-oid="{{ o.id }}">✦ Make original</button>{% endif %}
+        </div>
+        {% if not o.dubbed %}
+        <div class="translate">
+          <select class="lang" aria-label="Translate to">
+            <option value="">🌐 Translate & dub…</option>
+            {% for code, l in langs.items() if code != 'en' %}<option value="{{ code }}" {% if code not in langs_ready %}data-missing="1"{% endif %}>{{ l[0] }}{% if code not in langs_ready %} (voice not installed){% endif %}</option>{% endfor %}
+          </select>
+          <button class="btn sm ghost act-tr" type="button">Go</button>
+        </div>{% endif %}
+        <p class="small act-msg muted"></p>
+        {% if o.posts %}<ul class="posts">{% for p in o.posts %}<li><span class="plat {{ p.platform }}">{{ p.platform }}</span>
+          {% if p.url %}<a href="{{ p.url }}" rel="noopener" target="_blank">{{ p.status }}</a>{% else %}<span class="{{ 'danger' if p.status == 'failed' else '' }}">{{ p.status }}</span>{% endif %}
+          {% if p.error %}<span class="muted small" title="{{ p.error }}">ⓘ</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  <p class="fine">Clip score estimates hook strength, flow and payoff from the transcript. Translated versions use a synthetic voice and are labelled as AI-generated when posted.</p>
 </div>
-<p class="fine">Clip score estimates hook strength, flow and payoff from the transcript. Use it to choose what to post first; it doesn't guarantee views.</p>
 {% endif %}
 {% endblock %}

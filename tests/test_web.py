@@ -284,12 +284,109 @@ class TestWeb(unittest.TestCase):
         st, _, _ = c.req("POST", f"/api/outputs/{oid}/render", json.dumps({"start": 0, "end": 9999}).encode(),
                          {"Content-Type": "application/json", "X-CSRF-Token": tok})
         self.assertEqual(st, 400)
+        type(self).shared = {"c": c, "oid": oid, "jid": jid, "tok": tok, "outs": [o["id"] for o in outs]}
         # IDOR: another user sees nothing
         other = self._user("intruder@example.com")
         for path in (f"/media/{oid}/mp4", f"/api/outputs/{oid}", f"/app/jobs/{jid}", f"/app/review/{oid}", f"/api/jobs/{jid}"):
             self.assertEqual(other.get(path)[0], 404, path)
         # anonymous -> login redirect
         self.assertEqual(Client(self.base).get(f"/media/{oid}/mp4")[0], 303)
+
+
+    def test_07_select_zip_publish_take_translate(self):
+        import zipfile
+        import io
+        sh = getattr(type(self), "shared", None)
+        if not sh:
+            self.skipTest("needs test_06")
+        c, oid, jid, tok = sh["c"], sh["oid"], sh["jid"], sh["tok"]
+        hdr = {"Content-Type": "application/json", "X-CSRF-Token": tok}
+        # zip of selected clips
+        st, h, body = c.get("/media/zip?ids=" + ",".join(sh["outs"][:2]))
+        self.assertEqual(st, 200)
+        self.assertEqual(len(zipfile.ZipFile(io.BytesIO(body)).namelist()), 2)
+        self.assertEqual(self._user("zipthief@example.com").get(f"/media/zip?ids={oid}")[0], 404)
+        # publish: needs connected account + consent
+        st, _, body = c.req("POST", "/api/publish", json.dumps({"output_ids": [oid], "targets": [{"account": "nope"}],
+                                                                 "consent": True}).encode(), hdr)
+        self.assertEqual(st, 400)
+        self.assertIn(b"Connect", body)
+        from viral_yt.web import publishing
+
+        class FakeYT:
+            label = "YouTube"
+            calls = []
+
+            def configured(self):
+                return True
+
+            def refresh(self, t):
+                return t
+
+            def publish(self, t, account_id, video, meta):
+                FakeYT.calls.append((account_id, video.name, meta["privacy"]))
+                return {"remote_id": "V1", "url": "https://www.youtube.com/shorts/V1", "status": meta["privacy"]}
+        publishing._registry["youtube"] = FakeYT
+        uid = self._uid("creator@example.com")
+        acc_id = publishing.save_account(self.app.state.db, uid, "youtube",
+                                         {"account_id": "UCtest", "handle": "@me", "token": {"access_token": "x"}})
+        body = {"output_ids": [oid], "targets": [{"account": acc_id, "privacy": "unlisted"}], "caption": "hi"}
+        st, _, r = c.req("POST", "/api/publish", json.dumps(body).encode(), hdr)
+        self.assertEqual(st, 400)              # no consent
+        body["consent"] = True
+        st, _, r = c.req("POST", "/api/publish", json.dumps(body).encode(), hdr)
+        self.assertEqual(st, 200, r)
+        self._wait(c, json.loads(r)["job"])
+        self.assertEqual(FakeYT.calls[-1][0], "UCtest")
+        self.assertIn(b"youtube.com/shorts/V1", c.get(f"/app/jobs/{jid}")[2])
+        # public posting is gated on originality
+        from viral_yt.common import ROOT
+        cfgp = ROOT / "config" / "settings.json"
+        old = cfgp.read_text()
+        try:
+            d = json.loads(old); d["publishing"]["min_originality_score"] = 99; cfgp.write_text(json.dumps(d))
+            body["targets"][0]["privacy"] = "public"
+            st, _, r = c.req("POST", "/api/publish", json.dumps(body).encode(), hdr)
+            self.assertEqual(st, 400)
+            self.assertIn(b"originality", r)
+        finally:
+            cfgp.write_text(old)
+        # other users can't post with this account
+        thief = self._user("acctthief@example.com")
+        self._activate(self._uid("acctthief@example.com"))
+        tt = re.search(rb'name="csrf" value="([^"]+)"', thief.get("/app")[2]).group(1).decode()
+        st, _, _ = thief.req("POST", "/api/publish", json.dumps({**body, "targets": [{"account": acc_id, "privacy": "private"}]}).encode(),
+                             {"Content-Type": "application/json", "X-CSRF-Token": tt})
+        self.assertEqual(st, 400)
+        # make original + translate (flite voice + fake translator so the test is offline)
+        if b" flite " not in subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True).stdout:
+            return
+        from viral_yt import transform
+        real_speak = transform.speak
+        transform.speak = lambda text, out, lang, engine=None: real_speak(text, out, lang, "flite")
+        real_tr = transform.translate
+        transform.translate = lambda texts, lang, translator=None: [("ES " + t) if t else t for t in texts]
+        try:
+            st, _, r = c.req("POST", f"/api/outputs/{oid}/do/take", json.dumps({"take": "My honest view on this moment."}).encode(), hdr)
+            self.assertEqual(st, 200, r)
+            self._wait(c, json.loads(r)["job"])
+            self.assertEqual(c.get(f"/media/{oid}_take/mp4")[0], 200)
+            st, _, r = c.req("POST", f"/api/outputs/{oid}/do/translate", json.dumps({"lang": "es"}).encode(), hdr)
+            self.assertEqual(st, 200, r)
+            self._wait(c, json.loads(r)["job"])
+            self.assertIn("\nES\n", c.get(f"/media/{oid}_es/srt")[2].decode())   # word-level SRT
+            st, _, _ = c.req("POST", f"/api/outputs/{oid}/do/translate", json.dumps({"lang": "xx"}).encode(), hdr)
+            self.assertEqual(st, 400)
+        finally:
+            transform.speak, transform.translate = real_speak, real_tr
+
+    def _wait(self, c, job):
+        for _ in range(240):
+            j = json.loads(c.get(f"/api/jobs/{job}")[2])
+            if j["status"] in ("done", "failed"):
+                break
+            time.sleep(0.5)
+        self.assertEqual(j["status"], "done", j)
 
 
 if __name__ == "__main__":

@@ -79,6 +79,7 @@ def main() -> None:
     ap.add_argument("--ai", action="store_true", help="transcription, smart reframe (OpenCV) + face model")
     ap.add_argument("--web", action="store_true", help="web app (accounts, Stripe, link clipper, review editor)")
     ap.add_argument("--voice", action="store_true", help="Piper text-to-speech voice model (~120 MB)")
+    ap.add_argument("--voices", default="", help="dubbing languages, e.g. es,fr,hi (Piper voices + offline translator)")
     ap.add_argument("--skip-tests", action="store_true")
     a = ap.parse_args()
 
@@ -109,6 +110,28 @@ def main() -> None:
         step("Downloading Piper voice (verified against the host's SHA-256)")
         for rel, (url, sha) in VOICE.items():
             fetch(rel, url, sha)
+
+    langs = [x.strip() for x in a.voices.split(",") if x.strip()]
+    if langs:
+        sys.path.insert(0, str(ROOT / "src"))
+        from viral_yt.transform import LANGS
+        step(f"Dubbing voices for {', '.join(langs)} (Piper, verified against the host's SHA-256)")
+        for code in langs:
+            if code not in LANGS:
+                raise SystemExit(f"Unknown language {code}; choose from {', '.join(LANGS)}")
+            voice = LANGS[code][1]
+            locale, name, quality = voice.split("-")
+            base = f"https://huggingface.co/rhasspy/piper-voices/resolve/main/{locale.split('_')[0]}/{locale}/{name}/{quality}/{voice}"
+            fetch(f"models/piper/{voice}.onnx", base + ".onnx", None)
+            fetch(f"models/piper/{voice}.onnx.json", base + ".onnx.json", None)
+        step("Offline translator (Argos Translate) + language packs")
+        run(str(PY), "-m", "pip", "install", "argostranslate>=1.9", "piper-tts>=1.2")
+        code = ("import argostranslate.package as p; p.update_package_index(); av=p.get_available_packages()\n"
+                f"for l in {[c for c in langs if c != 'en']!r}:\n"
+                "    pk=[x for x in av if x.from_code=='en' and x.to_code==l]\n"
+                "    print('  ', l, 'installing' if pk else 'no offline pack - use an LLM translator');\n"
+                "    pk and p.install_from_path(pk[0].download())")
+        run(str(PY), "-c", code)
 
     step("Creating config and folders")
     if not (ROOT / ".env").exists():

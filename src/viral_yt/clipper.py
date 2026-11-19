@@ -94,7 +94,7 @@ def render_clip(asset: dict, source: Path, plan: dict, oid: str, words_all, *, r
     cold_open. preview=True -> half-size, no burned captions, ultrafast (for the browser editor)."""
     cfg = settings()["render"]
     override = override or {}
-    out_dir = out_dir or OUT
+    out_dir = Path(out_dir or OUT).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     preset = "ultrafast" if preview else (preset or cfg["preset"])
     w, h = ratio_dims(ratio)
@@ -167,7 +167,16 @@ def render_clip(asset: dict, source: Path, plan: dict, oid: str, words_all, *, r
     lufs = loudnorm(cfg["loudness_lufs"])
     if src_audio:
         parts.append(f"[{vin['quote']}:a][0:a]concat=n=2:v=0:a=1[srcA]" if qd else "[0:a]anull[srcA]")
-    if commentary and src_audio and mix == "duck":
+    dub = override.get("dub_audio")
+    if dub:
+        cmd += ["-i", str(Path(dub).resolve())]
+        vin["dub"] = nxt; nxt += 1
+    if dub and src_audio:      # translated voice on top, original kept as a quiet bed (music/ambience)
+        parts.append(f"[srcA]volume=0.12[bed];[{vin['dub']}:a]apad,atrim=0:{total:.3f}[dv];"
+                     f"[bed][dv]amix=inputs=2:duration=first:normalize=0,{lufs}[a]")
+    elif dub:
+        parts.append(f"[{vin['dub']}:a]apad,atrim=0:{total:.3f},{lufs}[a]")
+    elif commentary and src_audio and mix == "duck":
         parts.append(f"[srcA]volume=0.22[bed];[{vin['vo']}:a]apad,atrim=0:{total:.3f}[vo];"
                      f"[bed][vo]amix=inputs=2:duration=first:normalize=0,{lufs}[a]")
     elif commentary:

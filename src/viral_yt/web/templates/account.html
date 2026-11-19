@@ -16,6 +16,24 @@
   <form method="post" action="/connect/youtube"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn ghost">Verify a YouTube channel with Google</button></form>
   {% else %}<p class="fine">Channel verification isn't configured on this server (GOOGLE_OAUTH_WEB_CLIENT).</p>{% endif %}
 </section>
+<section class="card stack" id="platforms">
+  <h2>Connected platforms</h2>
+  <p class="fine">Posting needs the account owner's permission. Connect each account with the platform's own login; typing a handle isn't enough, because platforms reject uploads that weren't authorised. Tokens are stored encrypted. Disconnect any time.</p>
+  <div class="platgrid">
+  {% for p in platforms %}
+    <article class="platcard">
+      <h3><span class="plat {{ p.key }}">{{ p.label }}</span></h3>
+      {% for a in p.accounts %}
+        <div class="row-between"><span>{{ a.handle }}</span>
+          <form method="post" action="/social/disconnect" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ a.id }}"><button class="link danger">Disconnect</button></form></div>
+      {% else %}<p class="muted small">Not connected</p>{% endfor %}
+      {% if p.configured %}
+        <form method="post" action="/social/connect/{{ p.key }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm">Connect {{ p.label }}</button></form>
+      {% else %}<p class="fine">Not configured on this server yet (see docs → Social posting).</p>{% endif %}
+    </article>
+  {% endfor %}
+  </div>
+</section>
 <section class="card stack">
   <h2>Change password</h2>
   <form method="post" action="/account" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="password">

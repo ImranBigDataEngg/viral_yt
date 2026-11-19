@@ -70,6 +70,27 @@ Internet → Caddy (auto-HTTPS, HTTP/2) → uvicorn 127.0.0.1:8000 (trendtide we
 - Back up `data/web.db` daily (SQLite WAL is fine for hundreds of users; move to Postgres + object storage to scale).
 - GPU box optional. NVENC/QSV/AMF are auto-detected.
 
+## Clip actions (job page)
+- **Select / Select all → Download selected** zips the chosen MP4s. Every clip also has its own Download button.
+- **Make original** adds a short spoken intro with *your* take (suggested by the AI, edited by you; TTS voice) on a
+  blurred freeze-frame card, then the clip. It's real commentary, so the originality score rises; a disguise
+  (mirroring, speed-ups, filters) would not, and doesn't fool Content ID or YouTube's reused-content review.
+- **Translate & dub** (es, fr, de, pt, it, hi, ar, ru, tr, zh): translates the speech (your LLM, or offline Argos
+  Translate), re-voices it with a Piper voice, fits each line to its slot, keeps the original audio as a quiet bed and
+  burns translated captions. Output is a new clip `…_es`, marked as synthetic media when posted.
+  Install voices: `py scripts\install.py --voices es,hi,fr`.
+
+## Social posting setup
+Posting only works for accounts connected through each platform's own login. A typed handle can't authorise uploads.
+| Platform | What you need | Restrictions until approved |
+|---|---|---|
+| YouTube | Google OAuth web client (same as channel verification) with the redirect `…/social/callback/youtube`, YouTube Data API enabled | Apps that haven't passed Google's API audit have uploads locked **private** |
+| Instagram | Meta developer app → "Instagram API with Instagram Login", redirect `…/social/callback/instagram`, permissions `instagram_business_basic` + `instagram_business_content_publish`; the user's account must be Business/Creator | Public use needs Meta App Review |
+| TikTok | TikTok developer app with Login Kit + Content Posting API (Direct Post on), redirect `…/social/callback/tiktok`, scopes `user.info.basic,video.publish` | Unaudited apps: posts are **private only**, max 5 users per 24 h |
+
+Users pick clips, tick destinations, choose visibility (TikTok "who can view" must be chosen explicitly), confirm,
+and press Publish. Public posts require originality ≥ 70; the per-platform limit is 10 posts per day by default.
+
 ## Known gaps (next steps)
 - Email verification and password reset (needs an email provider: Postmark, SES or Resend).
 - 2FA (TOTP) for accounts.

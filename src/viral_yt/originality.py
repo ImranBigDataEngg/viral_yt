@@ -29,6 +29,8 @@ def score(meta: dict, published_titles: list[str] | None = None) -> tuple[int, l
             pts += 8; why.append("+8 third-party footage used under licence/permission")
         if meta.get("source_audio") == "full" and basis != "original":
             pts -= 15; why.append("-15 third-party audio kept at full level")
+    if meta.get("added_commentary"):
+        pts += 12; why.append("+12 your own take/context added")
     if meta.get("captions_included"):
         pts += 10; why.append("+10 captions")
     if meta.get("hook_text"):
