@@ -417,6 +417,7 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
     async def billing_page(req: Request):
         s, u = require_user(req)
         return page(req, "billing.html", {"status": req.query_params.get("status", ""),
+                                          "stripe_ready": bool(cfg.stripe_secret),
                                           "need": req.query_params.get("need"), "welcome": req.query_params.get("welcome"),
                                           "sub": db.one("SELECT * FROM subscriptions WHERE user_id=?", (u["id"],))})
 
@@ -428,6 +429,17 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         except billing.BillingError as exc:
             return page(req, "billing.html", {"error": str(exc)}, 400)
         return RedirectResponse(url, 303)
+
+    async def billing_dev_activate(req: Request):
+        """DEVELOPMENT ONLY (TT_DEV=1): grant a 30-day plan without Stripe. 404 in production."""
+        if not cfg.dev:
+            raise HTTPException(404)
+        s, u = require_user(req)
+        form = await form_checked(req, s)
+        plan = form.get("plan") if form.get("plan") in PLANS else "monthly"
+        db.run("INSERT OR REPLACE INTO subscriptions VALUES (?,?,?,?,?,?)",
+               (u["id"], "sub_dev", plan, "active", now() + 30 * 86400, now()))
+        return RedirectResponse("/app", 303)
 
     async def billing_portal(req: Request):
         s, u = require_user(req)
@@ -571,6 +583,7 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         Route("/media/{oid:str}/{variant:str}", media),
         Route("/billing", billing_page), Route("/billing/checkout", billing_checkout, methods=["POST"]),
         Route("/billing/portal", billing_portal, methods=["POST"]),
+        Route("/billing/dev-activate", billing_dev_activate, methods=["POST"]),
         Route("/stripe/webhook", stripe_webhook, methods=["POST"]),
         Route("/account", account, methods=["GET", "POST"]),
         Route("/connect/youtube", connect_youtube, methods=["POST"]),

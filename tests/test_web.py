@@ -198,6 +198,22 @@ class TestWeb(unittest.TestCase):
         self.assertIn(b"Monthly", page)
         self.assertIn(b"active", page)
 
+    def test_04b_dev_activate_only_in_dev(self):
+        c = self._user("devplan@example.com")
+        _, _, page = c.get("/billing")
+        self.assertIn(b"Activate free developer plan", page)
+        st, h, _ = c.form("/billing/dev-activate", {"csrf": c.csrf("/billing"), "plan": "monthly"})
+        self.assertEqual((st, h.get("location")), (303, "/app"))
+        self.assertIn(b"Monthly", c.get("/app")[2])
+        st, _, _ = c.form("/billing/dev-activate", {"csrf": "bad"})
+        self.assertEqual(st, 403)
+        self.app.state.cfg.dev = False
+        try:
+            st, _, _ = c.form("/billing/dev-activate", {"csrf": c.csrf("/billing")})
+            self.assertEqual(st, 404)
+        finally:
+            self.app.state.cfg.dev = True
+
     def test_05_ssrf_blocked(self):
         c = self._user("ssrf@example.com")
         self._activate(self._uid("ssrf@example.com"))
