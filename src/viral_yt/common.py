@@ -73,9 +73,19 @@ def env(name: str, default: str = "") -> str:
         if line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        if key.strip() == name:
-            return value.strip().strip('"').strip("'")
+        if key.strip().removeprefix("export ").strip() == name:
+            return _env_value(value)
     return default
+
+
+def _env_value(raw: str) -> str:
+    """Parse a .env value: quoted values keep everything inside the quotes; unquoted values drop a trailing
+    ` # comment` (a # preceded by whitespace), so `TT_DEV=1   # 0 in production` -> "1"."""
+    v = raw.strip()
+    if v[:1] in ("'", '"'):
+        end = v.find(v[0], 1)
+        return v[1:end] if end > 0 else v[1:]
+    return re.split(r"\s+#", v, maxsplit=1)[0].strip()
 
 
 def safe_name(value: str, maxlen: int = 90) -> str:

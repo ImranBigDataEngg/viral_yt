@@ -56,6 +56,14 @@ class TestCore(unittest.TestCase):
     def test_safe_name(self):
         self.assertEqual(safe_name("GTA 6: what's new?"), "GTA_6_what_s_new")
 
+    def test_env_values_with_inline_comments(self):
+        from viral_yt.common import _env_value
+        self.assertEqual(_env_value("1                          # 0 in production"), "1")
+        self.assertEqual(_env_value("http://127.0.0.1:8000 # https://your-domain in production"), "http://127.0.0.1:8000")
+        self.assertEqual(_env_value('"pa#ss word" # c'), "pa#ss word")
+        self.assertEqual(_env_value("abc#def"), "abc#def")       # '#' without a space is part of the value
+        self.assertEqual(_env_value(""), "")
+
     def test_srt_roundtrip(self):
         self.assertEqual(seconds_to_srt(61.234), "00:01:01,234")
         self.assertEqual(srt_to_seconds("00:01:01,234"), 61.234)
