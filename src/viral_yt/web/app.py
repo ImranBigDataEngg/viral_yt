@@ -38,6 +38,7 @@ import jinja2  # noqa: E402
 
 templates = Jinja2Templates(env=jinja2.Environment(loader=jinja2.FileSystemLoader(str(HERE / "templates")),
                                                    autoescape=True))
+BRAND = env("TT_BRAND_NAME", "EzzyClips Ultra")
 BASIS_LABELS = {"original": "I created it / it's my channel", "permission": "Written permission from the creator",
                 "licensed": "Licence or clipping-programme terms", "cc_by": "Creative Commons BY",
                 "public_domain": "Public domain"}
@@ -84,7 +85,8 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
     def page(req: Request, name: str, ctx: dict | None = None, status: int = 200):
         s, u = current(req)
         ent = billing.entitlement(db, u["id"]) if u else None
-        base = {"user": u, "csrf": s["csrf"] if s else "", "ent": ent, "plans": PLANS, "dev": cfg.dev}
+        base = {"user": u, "csrf": s["csrf"] if s else "", "ent": ent, "plans": PLANS, "dev": cfg.dev,
+                "brand": BRAND, "path": req.url.path}
         return templates.TemplateResponse(req, name, {**base, **(ctx or {})}, status_code=status)
 
     async def form_checked(req: Request, session: dict) -> dict:
@@ -125,6 +127,15 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
             raise HTTPException(404)
         return page(req, "legal.html", {"doc": doc})
 
+    async def start(req: Request):
+        """Landing-page link box: logged in -> dashboard prefilled; otherwise sign up first, then continue."""
+        url = (req.query_params.get("url") or "").strip()[:2048]
+        target = "/app" + ("?url=" + urllib.parse.quote(url, safe="") if url else "")
+        s, u = current(req)
+        if u:
+            return RedirectResponse(target, 303)
+        return RedirectResponse("/signup?next=" + urllib.parse.quote(target, safe=""), 303)
+
     async def healthz(req: Request):
         return JSONResponse({"ok": True})
 
@@ -134,7 +145,7 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
     # ---------------------------------------------------------------- auth
     async def signup(req: Request):
         if req.method == "GET":
-            return page(req, "auth.html", {"mode": "signup", "csrf": _pre_csrf(req)})
+            return page(req, "auth.html", {"mode": "signup", "csrf": _pre_csrf(req), "next": req.query_params.get("next", "")})
         form = await req.form(max_files=0, max_fields=10)
         if not _pre_csrf_ok(req, form.get("csrf")):
             raise HTTPException(403, "Invalid form. Reload and try again.")
@@ -149,11 +160,13 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         if not err and db.one("SELECT id FROM users WHERE email=?", (email,)):
             err = "Couldn't create that account. If you already have one, log in instead."
         if err:
-            return page(req, "auth.html", {"mode": "signup", "error": err, "email": email or "", "csrf": _pre_csrf(req)}, 400)
+            return page(req, "auth.html", {"mode": "signup", "error": err, "email": email or "", "csrf": _pre_csrf(req),
+                                           "next": form.get("next", "")}, 400)
         uid = secrets.token_hex(12)
         db.run("INSERT INTO users (id,email,pw_hash,created,accepted_terms) VALUES (?,?,?,?,?)",
                (uid, email, security.hash_password(pw), now(), now()))
-        resp = RedirectResponse("/billing?welcome=1", 303)
+        nxt = safe_next(form.get("next"))
+        resp = RedirectResponse("/billing?welcome=1&next=" + urllib.parse.quote(nxt), 303)
         set_session_cookie(resp, security.create_session(db, uid, client_ip(req), req.headers.get("user-agent", "")))
         return resp
 
@@ -208,10 +221,13 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
             sp = json.loads(j.pop("spec"))
             j["label"] = sp.get("url") or sp.get("upload_name") or "upload"
             j["outputs"] = db.one("SELECT COUNT(*) AS n FROM outputs WHERE job_id=? AND user_id=?", (j["id"], u["id"]))["n"]
+            first = db.one("SELECT id FROM outputs WHERE job_id=? AND user_id=? ORDER BY id LIMIT 1", (j["id"], u["id"]))
+            j["poster"] = f"/media/{first['id']}/poster" if first else ""
         channels = db.all("SELECT channel_id,title FROM channels WHERE user_id=?", (u["id"],))
         return page(req, "dashboard.html", {"jobs": jobs, "channels": channels, "ratios": list(RATIOS),
                                              "styles": list(STYLES), "bases": BASIS_LABELS,
-                                             "notice": req.query_params.get("notice", "")})
+                                             "notice": req.query_params.get("notice", ""),
+                                             "prefill": (req.query_params.get("url") or "")[:2048]})
 
     async def create_job(req: Request):
         s, u = require_user(req)
@@ -305,8 +321,11 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
             try:
                 meta = json.loads(Path(o["meta_file"]).read_text(encoding="utf-8"))
                 o["hook"], o["score"] = meta.get("hook_text", ""), meta.get("originality_score")
+                o["scores"] = meta.get("scores") or {}
+                o["has_poster"] = bool(meta.get("poster"))
             except (OSError, ValueError):
-                o["hook"], o["score"] = "", None
+                o["hook"], o["score"], o["scores"], o["has_poster"] = "", None, {}, False
+        outs.sort(key=lambda o: (-(o["scores"].get("overall") or 0), o["id"]))
         spec = json.loads(job["spec"])
         return page(req, "job.html", {"job": job, "outputs": outs, "label": spec.get("url") or spec.get("upload_name")})
 
@@ -411,14 +430,15 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         out = owned_output(u, req.path_params["oid"])
         variant = req.path_params["variant"]
         f = Path(out["file"])
-        path = {"mp4": f, "preview": f.with_name(f.stem + ".preview.mp4"), "srt": f.with_suffix(".srt")}.get(variant)
+        path = {"mp4": f, "preview": f.with_name(f.stem + ".preview.mp4"), "srt": f.with_suffix(".srt"),
+                "poster": f.with_suffix(".jpg")}.get(variant)
         if not path or not path.is_file():
             raise HTTPException(404)
         headers = {}
         if req.query_params.get("download") == "1":
             name = "".join(ch for ch in (out["title"] or out["id"]) if ch.isalnum() or ch in " -_")[:60].strip() or out["id"]
             headers["content-disposition"] = f'attachment; filename="{name}{path.suffix}"'
-        mt = "video/mp4" if path.suffix == ".mp4" else "text/plain; charset=utf-8"
+        mt = {".mp4": "video/mp4", ".jpg": "image/jpeg"}.get(path.suffix, "text/plain; charset=utf-8")
         return FileResponse(path, media_type=mt, headers=headers)
 
     # ---------------------------------------------------------------- billing
@@ -426,6 +446,7 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         s, u = require_user(req)
         return page(req, "billing.html", {"status": req.query_params.get("status", ""),
                                           "stripe_ready": bool(cfg.stripe_secret),
+                                          "next": safe_next(req.query_params.get("next")),
                                           "need": req.query_params.get("need"), "welcome": req.query_params.get("welcome"),
                                           "sub": db.one("SELECT * FROM subscriptions WHERE user_id=?", (u["id"],))})
 
@@ -447,7 +468,7 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         plan = form.get("plan") if form.get("plan") in PLANS else "monthly"
         db.run("INSERT OR REPLACE INTO subscriptions VALUES (?,?,?,?,?,?)",
                (u["id"], "sub_dev", plan, "active", now() + 30 * 86400, now()))
-        return RedirectResponse("/app", 303)
+        return RedirectResponse(safe_next(form.get("next")), 303)
 
     async def billing_portal(req: Request):
         s, u = require_user(req)
@@ -579,7 +600,7 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
             return await self.app(scope, receive, send)
 
     routes = [
-        Route("/", landing), Route("/legal/{doc}", legal), Route("/healthz", healthz), Route("/favicon.ico", favicon),
+        Route("/", landing), Route("/start", start), Route("/legal/{doc}", legal), Route("/healthz", healthz), Route("/favicon.ico", favicon),
         Route("/signup", signup, methods=["GET", "POST"]), Route("/login", login, methods=["GET", "POST"]),
         Route("/logout", logout, methods=["POST"]),
         Route("/app", dashboard), Route("/app/jobs", create_job, methods=["POST"]),

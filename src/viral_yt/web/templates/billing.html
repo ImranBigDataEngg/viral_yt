@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Billing · TrendTide{% endblock %}
+{% block title %}Billing · {{ brand }}{% endblock %}
 {% block main %}
 <div class="page-head"><h1>Billing</h1></div>
 {% if welcome %}<p class="alert ok">Account created. Choose a plan to start clipping.</p>{% endif %}
@@ -13,7 +13,8 @@
     <p class="fine">{% if not stripe_ready %}Stripe isn't configured (<span class="mono">STRIPE_SECRET_KEY</span> is empty), so the Subscribe buttons can't open checkout yet. {% endif %}
       For local testing, activate a free 30-day plan. This button doesn't exist when <span class="mono">TT_DEV=0</span>.</p>
     <form method="post" action="/billing/dev-activate"><input type="hidden" name="csrf" value="{{ csrf }}">
-      <input type="hidden" name="plan" value="monthly"><button class="btn">Activate free developer plan</button></form>
+      <input type="hidden" name="plan" value="monthly"><input type="hidden" name="next" value="{{ next or '/app' }}">
+      <button class="btn">Activate free developer plan</button></form>
   </div>
 {% endif %}
 {% if ent %}

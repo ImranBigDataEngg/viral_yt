@@ -19,7 +19,7 @@ from .captions import build_ass
 from .common import ROOT, get_logger, is_true, local_file, safe_name, settings
 from .ffmpeg_tools import (RATIO_SUFFIX, check_ffmpeg, encode_args, ffmpeg_filter_path, has_audio,  # noqa: F401
                            layout_chain, layout_fit, loudnorm, probe_duration, probe_hw_encoder, ratio_dims, run)
-from .highlights import audio_energy, select_clips
+from .highlights import audio_energy, clip_scores, select_clips
 from .media_prep import align_cut, extract_audio, load_words, sentences, silences, work_dir
 from .originality import score as originality
 from .reframe import analyze
@@ -204,11 +204,26 @@ def render_clip(asset: dict, source: Path, plan: dict, oid: str, words_all, *, r
         "source_audio": "ducked" if (commentary and mix == "duck") else ("none" if commentary else "full"),
         "contains_realistic_synthetic_media": False, "asset": asset, "edited": bool(override),
         "highlight": {k: plan.get(k) for k in ("score", "source", "reason", "hook_line")},
+        "scores": clip_scores(" ".join(w[2] for w in cap_words), plan.get("hook_line") or
+                              (cap_words and " ".join(w[2] for w in cap_words[:12])) or "", total),
     }
+
+
+def make_poster(video: Path) -> Path | None:
+    """Small JPEG thumbnail (frame at ~1.2 s) for galleries; failures are non-fatal."""
+    out = video.with_suffix(".jpg")
+    try:
+        run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", "1.2", "-i", video.name, "-frames:v", "1",
+             "-vf", "scale=360:-2", "-q:v", "4", out.name], cwd=video.parent)
+        return out
+    except RuntimeError:
+        return None
 
 
 def finalize(meta: dict, out_dir: Path, published_titles: list[str] | None = None, record: bool = True) -> dict:
     meta["originality_score"], meta["originality_reasons"] = originality(meta, published_titles)
+    poster = make_poster(Path(meta["file"]))
+    meta["poster"] = str(poster) if poster else ""
     (out_dir / f"{meta['output_id']}.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     if record:
         from .state import record_render

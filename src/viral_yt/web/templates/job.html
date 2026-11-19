@@ -1,26 +1,42 @@
 {% extends "base.html" %}
-{% block title %}Clips · TrendTide{% endblock %}
+{% block title %}Clips · {{ brand }}{% endblock %}
 {% block main %}
-<div class="page-head"><h1 class="trunc">{{ label }}</h1><a class="link" href="/app">← All videos</a></div>
-<div class="card status" id="jobstatus" data-job="{{ job.id }}" data-status="{{ job.status }}">
-  <span class="pill {{ job.status }}" id="jobpill">{{ job.status }}</span>
-  <span id="jobprogress">{{ job.error or job.progress }}</span>
-  {% if job.status in ('queued','running','waiting') %}<span class="spinner" aria-hidden="true"></span>{% endif %}
-</div>
+<div class="page-head"><div><a class="link small" href="/app">← Projects</a><h1 class="trunc">{{ label }}</h1></div></div>
+<section class="progress card" id="jobstatus" data-job="{{ job.id }}" data-status="{{ job.status }}" data-progress="{{ job.progress or '' }}">
+  <ol class="stepper" id="stepper">
+    <li data-k="queued">Queued</li><li data-k="rights">Rights check</li><li data-k="download">Getting video</li>
+    <li data-k="ai">Finding highlights</li><li data-k="render">Rendering clips</li><li data-k="done">Ready</li>
+  </ol>
+  <div class="pbar"><i id="pfill"></i></div>
+  <p class="muted small" id="jobprogress">{{ job.error or job.progress }}</p>
+</section>
 {% if outputs %}
-<div class="clips">
+<div class="clips-head"><h2 class="sec-title">{{ outputs|length }} clips · best first</h2></div>
+<div class="clipgrid">
   {% for o in outputs %}
-  <article class="card clip ratio-{{ o.ratio.replace(':','x') }}">
-    <video src="/media/{{ o.id }}/mp4" controls preload="metadata" playsinline></video>
-    <h3>{{ o.title or o.hook }}</h3>
-    <p class="muted">{{ o.ratio }} · {{ '%.0f'|format(o.duration or 0) }}s{% if o.score is not none %} · originality {{ o.score }}{% endif %}</p>
-    <div class="row-btns">
-      <a class="btn small" href="/media/{{ o.id }}/mp4?download=1">Download MP4</a>
-      <a class="btn small ghost" href="/media/{{ o.id }}/srt?download=1">SRT</a>
-      <a class="btn small ghost" href="/app/review/{{ o.id }}">Review & edit</a>
+  <article class="clipcard ratio-{{ o.ratio.replace(':','x') }}">
+    <div class="vid">
+      <video src="/media/{{ o.id }}/mp4" {% if o.has_poster %}poster="/media/{{ o.id }}/poster"{% endif %} controls preload="none" playsinline></video>
+      <span class="ratio-tag">{{ o.ratio }}</span>
+    </div>
+    <div class="clip-body">
+      <div class="clip-top">
+        {% if o.scores.overall %}<span class="scorepill s{{ (o.scores.overall // 10) * 10 }}" title="Clip score (hook, flow, value)">{{ o.scores.overall }}</span>{% endif %}
+        <div><h3>{{ o.title or o.hook }}</h3><p class="muted small">{{ o.ratio }} · {{ '%.0f'|format(o.duration or 0) }} s</p></div>
+      </div>
+      {% if o.scores %}<ul class="minibars">
+        <li>Hook<i class="bar" data-w="{{ o.scores.hook }}"></i><b>{{ o.scores.hook }}</b></li>
+        <li>Flow<i class="bar" data-w="{{ o.scores.flow }}"></i><b>{{ o.scores.flow }}</b></li>
+        <li>Value<i class="bar" data-w="{{ o.scores.value }}"></i><b>{{ o.scores.value }}</b></li></ul>{% endif %}
+      <div class="row-btns">
+        <a class="btn sm" href="/media/{{ o.id }}/mp4?download=1">⬇ Download</a>
+        <a class="btn sm ghost" href="/app/review/{{ o.id }}">✎ Edit</a>
+        <a class="btn sm ghost" href="/media/{{ o.id }}/srt?download=1">SRT</a>
+      </div>
     </div>
   </article>
   {% endfor %}
 </div>
+<p class="fine">Clip score estimates hook strength, flow and payoff from the transcript. Use it to choose what to post first; it doesn't guarantee views.</p>
 {% endif %}
 {% endblock %}

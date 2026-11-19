@@ -197,3 +197,25 @@ def select_clips(sents, count: int = 3, min_s: float = 20, max_s: float = 58, en
         out.append({**c, "s0": s0, "s1": s1, "title": "", "quote": pick_quote(sents, s0, s1), "reason": "heuristic",
                     "source": "heuristic"})
     return out, stats
+
+
+# ---------------------------------------------------------------------------
+# Clip score shown in the UI: 0-99 overall from three transparent parts. It's a transcript-signal
+# estimate to help you pick and order clips, not a prediction of views.
+# ---------------------------------------------------------------------------
+PAYOFF_WORDS = ("so", "that's why", "the lesson", "turns out", "which means", "the answer", "result", "finally",
+                "here's", "secret", "because", "remember")
+
+
+def clip_scores(text: str, hook_line: str, duration: float) -> dict:
+    t, h = (text or "").lower(), (hook_line or "").lower()
+    words = len(t.split())
+    hook = min(99, 35 + _sentence_hook(h) * 14 + (10 if len(h.split()) <= 12 else 0)
+               - (25 if re.match(r"^(so|and|um|uh|yeah|like|but)\b", h) else 0))
+    wps = words / max(duration, 1)
+    flow = 99 - min(60, abs(wps - 2.7) * 22) - (0 if END_PUNCT.search(t.strip()) else 20) - min(20, abs(duration - 38) * .5)
+    value = min(99, 30 + len(re.findall(r"\b\d+(?:[.,]\d+)?%?\b", t)) * 8 + t.count("?") * 6
+                + sum(9 for w in PAYOFF_WORDS if w in t))
+    parts = {k: int(max(5, min(99, round(v)))) for k, v in (("hook", hook), ("flow", flow), ("value", value))}
+    parts["overall"] = int(round(parts["hook"] * .45 + parts["flow"] * .25 + parts["value"] * .30))
+    return parts

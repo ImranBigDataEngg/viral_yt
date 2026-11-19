@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Account · TrendTide{% endblock %}
+{% block title %}Account · {{ brand }}{% endblock %}
 {% block main %}
 <div class="page-head"><h1>Account</h1><span class="muted">{{ user.email }}</span></div>
 {% if msg %}<p class="alert">{{ msg }}</p>{% endif %}

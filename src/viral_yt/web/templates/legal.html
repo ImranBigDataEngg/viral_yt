@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ doc.replace('-', ' ').title() }} · TrendTide{% endblock %}
+{% block title %}{{ doc.replace('-', ' ').title() }} · {{ brand }}{% endblock %}
 {% block main %}
 <article class="narrow card prose">
 {% if doc == "terms" %}
   <h1>Terms of Service</h1>
   <p class="fine">Template. Have it reviewed by a lawyer in your jurisdiction before launch.</p>
-  <p>TrendTide edits videos you provide into short clips. You must own each video you submit or hold a licence or written permission covering editing and republishing. Videos from YouTube channels you've verified, Creative Commons videos and public-domain material are also allowed.</p>
+  <p>{{ brand }} edits videos you provide into short clips. You must own each video you submit or hold a licence or written permission covering editing and republishing. Videos from YouTube channels you've verified, Creative Commons videos and public-domain material are also allowed.</p>
   <p>Subscriptions renew automatically at the price shown (Day Pass $2/day, Monthly $25/month, Yearly $250/year, USD, plus applicable taxes) until cancelled in Billing. Cancellation takes effect at the end of the current period. Fees already paid are non-refundable except where the law requires otherwise.</p>
   <p>Fair-use limits apply per plan. We may suspend accounts that breach the Acceptable Use Policy. The service is provided "as is". To the extent permitted by law, our liability is limited to the fees you paid in the previous 3 months.</p>
 {% elif doc == "privacy" %}

@@ -1,49 +1,67 @@
 {% extends "base.html" %}
-{% block title %}Dashboard · TrendTide{% endblock %}
+{% block title %}Projects · {{ brand }}{% endblock %}
 {% block main %}
-<div class="page-head"><h1>Clip a long video</h1>
-  {% if ent %}<span class="pill ok">{{ ent.label }} · {{ ent.per_day }}/day</span>{% else %}<a class="pill warn" href="/billing">No active plan: choose one</a>{% endif %}
-</div>
-{% if notice %}<p class="alert">{{ notice }}</p>{% endif %}
-<form class="card stack" method="post" action="/app/jobs" enctype="multipart/form-data" id="newjob">
-  <input type="hidden" name="csrf" value="{{ csrf }}">
-  <div class="row2">
-    <label>Video link<input type="url" name="url" placeholder="https://www.youtube.com/watch?v=…  or a direct https video link" maxlength="2048"></label>
-    <label>…or upload a file<input type="file" name="file" accept=".mp4,.mov,.mkv,.webm,.m4v,video/*"></label>
+<section class="create">
+  <div class="create-head">
+    <h1>Create clips</h1>
+    {% if ent %}<span class="pill ok">{{ ent.label }} · {{ ent.per_day }} videos/day</span>{% else %}<a class="pill warn" href="/billing">Choose a plan to start →</a>{% endif %}
   </div>
-  <p class="fine">YouTube links work for channels you've verified in <a href="/account">Account</a> ({{ channels|length }} verified) and for Creative Commons videos. Live streams are processed when the replay is ready.</p>
-  <div class="row3">
-    <fieldset><legend>Formats</legend>
-      {% for r in ratios %}<label class="check"><input type="checkbox" name="ratios" value="{{ r }}" {% if r == '9:16' %}checked{% endif %}> {{ r }} {{ {'9:16':'Shorts · Reels · TikTok','1:1':'Feed square','16:9':'Landscape'}[r] }}</label>{% endfor %}
-    </fieldset>
-    <label>Clips to make<input type="number" name="count" min="1" max="10" value="5"></label>
-    <label>Caption style<select name="caption_style">{% for s in styles %}<option value="{{ s }}">{{ s.replace('_',' ').title() }}</option>{% endfor %}</select></label>
-  </div>
-  <label class="check"><input type="checkbox" name="cold_open" checked> Cold open: start each clip with its best line</label>
-  <details class="rights"><summary>Rights (required for uploads & direct links)</summary>
-    <div class="row2">
-      <label>I can use this video because…<select name="rights_basis"><option value="">Choose…</option>
-        {% for k, v in bases.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
-      <label>Evidence<input name="rights_evidence" maxlength="500" placeholder="e.g. my own stream from 12 Nov; or permission email from @creator, 3 Nov"></label>
+  {% if notice %}<p class="alert">{{ notice }}</p>{% endif %}
+  <form method="post" action="/app/jobs" enctype="multipart/form-data" id="newjob" class="creator">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="linkbar big">
+      <span class="linkicon" aria-hidden="true">🔗</span>
+      <input type="url" name="url" id="urlIn" value="{{ prefill }}" placeholder="Paste a YouTube or video link" maxlength="2048" aria-label="Video link">
+      <label class="btn ghost upl" for="fileIn">⬆ Upload</label>
+      <input type="file" name="file" id="fileIn" accept=".mp4,.mov,.mkv,.webm,.m4v,video/*" hidden>
+      <button class="btn lg" {% if not ent %}disabled{% endif %}>Get clips</button>
     </div>
-  </details>
-  <label class="check"><input type="checkbox" name="attest" required> I own this video or have the right to edit and republish it.</label>
-  <button class="btn" {% if not ent %}disabled{% endif %}>Find viral clips</button>
-</form>
+    <p class="filename muted small" id="fileName"></p>
 
-<h2>Your videos</h2>
-{% if jobs %}
-<table class="table">
-  <thead><tr><th>Source</th><th>Status</th><th>Clips</th><th></th></tr></thead>
-  <tbody>
-  {% for j in jobs %}
-    <tr><td class="trunc"><a href="/app/jobs/{{ j.id }}">{{ j.label }}</a></td>
-      <td><span class="pill {{ j.status }}">{{ j.status }}</span> <span class="muted">{{ j.error or j.progress }}</span></td>
-      <td>{{ j.outputs }}</td>
-      <td><form method="post" action="/app/jobs/{{ j.id }}/delete" class="inline confirm" data-confirm="Delete this video and its clips?">
-        <input type="hidden" name="csrf" value="{{ csrf }}"><button class="link danger">Delete</button></form></td></tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% else %}<p class="muted">No videos yet. Paste your first link above.</p>{% endif %}
+    <div class="opts">
+      <div class="opt"><span class="opt-l">Formats</span>
+        <div class="toggles">
+        {% for r in ratios %}<label class="tog"><input type="checkbox" name="ratios" value="{{ r }}" {% if r == '9:16' %}checked{% endif %}><span><b>{{ r }}</b> {{ {'9:16':'Shorts · Reels · TikTok','1:1':'Feed','16:9':'Landscape'}[r] }}</span></label>{% endfor %}
+        </div></div>
+      <div class="opt"><span class="opt-l">Clips</span>
+        <div class="toggles">{% for n in (3,5,8,10) %}<label class="tog"><input type="radio" name="count" value="{{ n }}" {% if n == 5 %}checked{% endif %}><span>{{ n }}</span></label>{% endfor %}</div></div>
+      <div class="opt"><span class="opt-l">Captions</span>
+        <div class="toggles">{% for s in styles %}<label class="tog cap-{{ s }}"><input type="radio" name="caption_style" value="{{ s }}" {% if loop.first %}checked{% endif %}><span>{{ s.replace('_',' ').title() }}</span></label>{% endfor %}</div></div>
+      <div class="opt"><span class="opt-l">Hook</span>
+        <label class="tog"><input type="checkbox" name="cold_open" checked><span>Cold open with the best line</span></label></div>
+    </div>
+
+    <div class="rights" id="rightsBox">
+      <p class="small muted" id="rightsHint">YouTube links: your verified channels ({{ channels|length }}) and Creative Commons videos. <a href="/account">Verify a channel</a></p>
+      <div class="row2" id="rightsFields">
+        <label>For uploads &amp; direct links: I can use this video because…<select name="rights_basis"><option value="">Choose…</option>
+          {% for k, v in bases.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+        <label>Evidence<input name="rights_evidence" maxlength="500" placeholder="e.g. my own stream from 12 Nov"></label>
+      </div>
+      <label class="check small"><input type="checkbox" name="attest" required> I own this video or have the right to edit and republish it.</label>
+    </div>
+  </form>
+</section>
+
+<section>
+  <h2 class="sec-title">Your projects</h2>
+  {% if jobs %}
+  <div class="projects">
+    {% for j in jobs %}
+    <article class="proj">
+      <a href="/app/jobs/{{ j.id }}" class="proj-thumb">{% if j.poster %}<img src="{{ j.poster }}" alt="" loading="lazy">{% else %}<span class="ph-empty">{{ '⏳' if j.status in ('queued','running','waiting') else ('⚠' if j.status == 'failed' else '🎬') }}</span>{% endif %}
+        <span class="pill {{ j.status }} on-thumb">{{ j.status }}</span></a>
+      <div class="proj-body">
+        <a href="/app/jobs/{{ j.id }}" class="proj-title trunc">{{ j.label }}</a>
+        <p class="muted small">{{ j.outputs }} clips · {{ j.error or j.progress }}</p>
+      </div>
+      <form method="post" action="/app/jobs/{{ j.id }}/delete" class="inline confirm proj-del" data-confirm="Delete this project and its clips?">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><button class="link danger" aria-label="Delete project">🗑</button></form>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty"><p>No projects yet. Paste your first link above. Clips usually arrive in a few minutes.</p></div>
+  {% endif %}
+</section>
 {% endblock %}

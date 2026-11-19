@@ -1,4 +1,6 @@
-# TrendTide web app: setup, payments, security, deployment
+# EzzyClips Ultra (TrendTide web app): setup, payments, security, deployment
+
+The web product is branded **EzzyClips Ultra** (`TT_BRAND_NAME`); the CLI and the YouTube channel stay TrendTide.
 
 `trendtide web` serves a full SaaS: accounts, Stripe subscriptions ($2/day, $25/month, $250/year), the **manual clipper**
 (paste a link or upload → N clips with hooks, captions, active-speaker framing, 9:16 / 1:1 / 16:9), and the
