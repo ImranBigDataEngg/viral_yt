@@ -44,8 +44,18 @@ def layout_chain(src: str, layout: str, w: int, h: int, fps: int, out: str) -> s
             # blur at 1/6 resolution then upscale: visually identical background, ~10x cheaper than full-res gblur
             f"[lb_a]scale={w // 6}:{h // 6}:force_original_aspect_ratio=increase,crop={w // 6}:{h // 6},"
             f"boxblur=6:2,scale={w}:{h}:flags=bilinear,eq=brightness=-0.10[lb_bg];"
-            f"[lb_b]scale={w}:-2:force_original_aspect_ratio=decrease[lb_fg];"
-            f"[lb_bg][lb_fg]overlay=(W-w)/2:(H-h)/2-{int(h*0.06)},setsar=1,fps={fps}[{out}]")
+            f"[lb_b]scale={w}:{h}:force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2[lb_fg];"
+            f"[lb_bg][lb_fg]overlay=(W-w)/2:(H-h)/2-{int(h * 0.06) if h > w else 0},setsar=1,fps={fps}[{out}]")
+
+
+RATIOS = {"9:16": (1080, 1920), "1:1": (1080, 1080), "16:9": (1920, 1080)}
+RATIO_SUFFIX = {"9:16": "", "1:1": "_1x1", "16:9": "_16x9"}
+
+
+def ratio_dims(ratio: str) -> tuple[int, int]:
+    if ratio not in RATIOS:
+        raise ValueError(f"ratio must be one of {sorted(RATIOS)}")
+    return RATIOS[ratio]
 
 
 def loudnorm(lufs: float) -> str:

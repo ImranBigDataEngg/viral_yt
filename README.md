@@ -44,6 +44,15 @@ silences, shot-aware smart reframe (YuNet faces → locked crop per shot; gamepl
 with the best quote, 4 caption styles, GPU encoder auto-probe (NVENC/QSV/AMF/VideoToolbox), parallel renders,
 resumable cache. `trendtide doctor` checks everything.
 
+### v2.2: web app, manual clipper, review editor → [docs/WEB_APP.md](docs/WEB_APP.md)
+- **Manual clipper mode:** `trendtide clip-url <link|file>` or the web dashboard. YouTube videos and finished live streams
+  from channels you verified, Creative Commons videos, direct links and uploads become N clips with hooks and captions.
+- **Active-speaker framing:** with two or more people on screen, the crop hard-cuts to whoever is talking
+  (mouth motion during speech, hysteresis).
+- **9:16, 1:1 and 16:9** exports (`--ratios 9:16,1:1,16:9`).
+- **Browser review editor:** trim handles, caption text and timing edits, hook, style and cold open, then the final render.
+- **Professional web app** with Stripe subscriptions ($2/day, $25/month, $250/year) and a hardened security model.
+
 ## Commands
 | Command | What it does |
 |---|---|
@@ -56,9 +65,12 @@ resumable cache. `trendtide doctor` checks everything.
 | `manifest` | CSV + HTML gallery with TikTok/IG captions |
 | `run [--execute] [--share] [--no-discover]` | Full cycle |
 | `doctor [--fetch-models]` | Environment check with exact fixes; downloads the face model |
+| `clip-url SOURCE [--count 5] [--ratios 9:16,1:1] [--basis … --evidence …]` | Manual clipper: link/file to clips |
+| `verify-channel` | Record which YouTube channels you own (read-only OAuth) |
+| `web` / `worker` / `stripe-setup` | Run the SaaS, its job worker, create Stripe prices |
 
 ## Status
-Implemented & tested locally (18 tests + FFmpeg demo). Needs your credentials: discovery, upload, Drive.
+Implemented & tested locally (31 tests incl. 6 end-to-end web/security tests + FFmpeg demo). Needs your credentials: discovery, upload, Drive.
 Public API uploads need YouTube's API audit. Channel creation is manual. TikTok/IG posting is manual from the gallery.
 
 ## Safety & monetization

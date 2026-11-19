@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}TrendTide — AI clipper for long videos{% endblock %}</title>
+<meta name="description" content="Turn long videos and finished live streams you own into viral Shorts, Reels and TikToks with hooks, captions and speaker-aware framing.">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>
+{% block head %}{% endblock %}
+</head>
+<body class="{% block bodyclass %}{% endblock %}">
+<header class="topbar">
+  <a class="brand" href="/"><span class="logo" aria-hidden="true"></span>TrendTide</a>
+  <nav>
+    {% if user %}
+      <a href="/app">Dashboard</a><a href="/billing">Billing</a><a href="/account">Account</a>
+      <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">Log out</button></form>
+    {% else %}
+      <a href="/#pricing">Pricing</a><a href="/login">Log in</a><a class="btn small" href="/signup">Start clipping</a>
+    {% endif %}
+  </nav>
+</header>
+{% if dev %}<div class="devbar">Development mode — Stripe test keys only.</div>{% endif %}
+<main>{% block main %}{% endblock %}</main>
+<footer class="foot">
+  <span>© TrendTide</span>
+  <a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/acceptable-use">Acceptable use</a>
+  <span class="muted">Payments processed securely by Stripe. We never see your card number.</span>
+</footer>
+</body>
+</html>

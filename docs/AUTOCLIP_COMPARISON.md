@@ -35,17 +35,15 @@ now goes further.
 | Rights & monetization safety | "only download what you own" note; bundles yt-dlp with cookie support | Rights ledger with evidence, credit lines, voice-over required for third-party, originality score ≥ 70 gate, daily cap |
 | Publishing | Export only (non-goal) | YouTube upload (private/scheduled/public, `containsSyntheticMedia`), Drive links, TikTok/IG caption gallery |
 
-## Where autoclip is still ahead (honest list → roadmap)
+## Where autoclip was ahead and what v2.2 did about it
 
-1. **Review UI** (React: player, trim handles, caption editor, live job progress). TrendTide has a static gallery.
-   → Roadmap: small FastAPI + HTMX review page (fits your stack).
-2. **Active-speaker framing** in multi-person shots (WhisperX diarization + mouth-aspect-ratio). TrendTide falls back
-   to blur-fit for two-shots. → Roadmap: YuNet landmarks give mouth points; add mouth-motion speaker pick.
-3. **1:1 and 16:9 exports.** TrendTide is 9:16 only (all target platforms). → Trivial to add if needed.
-4. **Native Anthropic / Gemini adapters** (we use one OpenAI-compatible adapter + Ollama, which covers Gemini, Groq,
-   OpenRouter, DeepSeek, LM Studio).
-5. **Docker image.**
-6. Maturity: more tests around reframe edge cases.
+1. ~~Review UI~~ → **done in v2.2**: browser editor with trim handles, caption text/timing edits, style, hook, cold open
+   and live overlay preview on a fast proxy render.
+2. ~~Active-speaker framing~~ → **done in v2.2**: YuNet mouth landmarks + frame-difference mouth motion, gated by
+   speech energy. Hysteresis (1.5 s hold, 1.3× margin) and hard cuts. No PyTorch/WhisperX needed.
+3. ~~1:1 and 16:9 exports~~ → **done in v2.2**: any ratio per job, each reframed independently.
+4. Native Anthropic / Gemini adapters: still via the OpenAI-compatible adapter + Ollama.
+5. Docker image: still to do.
 
 Deliberately **not** adopted: yt-dlp ingest with browser cookies. TrendTide does not download third-party videos;
 sources come from your own files or rights holders (see IMPLEMENTATION_PLAN §0).

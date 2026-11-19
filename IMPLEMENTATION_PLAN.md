@@ -75,6 +75,11 @@ shot-aware YuNet smart reframe, cold open, 4 caption styles, multi-vendor GPU en
 content-addressed stage cache, `doctor`. Details, benchmark and the honest "where autoclip is still ahead" list:
 [docs/AUTOCLIP_COMPARISON.md](docs/AUTOCLIP_COMPARISON.md).
 
+### 1c. v2.2 — product features
+Manual clipper mode (link/upload → clips, rights-checked before download, live streams queued until the VOD exists),
+active-speaker framing, 9:16/1:1/16:9 exports, browser review editor, and a web SaaS with Stripe subscriptions
+($2/day · $25/month · $250/year). Security model, setup and known gaps: [docs/WEB_APP.md](docs/WEB_APP.md).
+
 ## 2. Brand & channel (manual — needs your Google account)
 
 - **Name:** TrendTide · **Handle:** `@TrendTide` (check in YouTube; fallbacks above) · **Tagline:** *The story behind what's trending.*

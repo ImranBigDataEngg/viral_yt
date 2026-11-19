@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Clips · TrendTide{% endblock %}
+{% block main %}
+<div class="page-head"><h1 class="trunc">{{ label }}</h1><a class="link" href="/app">← All videos</a></div>
+<div class="card status" id="jobstatus" data-job="{{ job.id }}" data-status="{{ job.status }}">
+  <span class="pill {{ job.status }}" id="jobpill">{{ job.status }}</span>
+  <span id="jobprogress">{{ job.error or job.progress }}</span>
+  {% if job.status in ('queued','running','waiting') %}<span class="spinner" aria-hidden="true"></span>{% endif %}
+</div>
+{% if outputs %}
+<div class="clips">
+  {% for o in outputs %}
+  <article class="card clip ratio-{{ o.ratio.replace(':','x') }}">
+    <video src="/media/{{ o.id }}/mp4" controls preload="metadata" playsinline></video>
+    <h3>{{ o.title or o.hook }}</h3>
+    <p class="muted">{{ o.ratio }} · {{ '%.0f'|format(o.duration or 0) }}s{% if o.score is not none %} · originality {{ o.score }}{% endif %}</p>
+    <div class="row-btns">
+      <a class="btn small" href="/media/{{ o.id }}/mp4?download=1">Download MP4</a>
+      <a class="btn small ghost" href="/media/{{ o.id }}/srt?download=1">SRT</a>
+      <a class="btn small ghost" href="/app/review/{{ o.id }}">Review & edit</a>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

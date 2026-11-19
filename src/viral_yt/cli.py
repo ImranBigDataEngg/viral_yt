@@ -6,7 +6,7 @@ import json
 import sys
 from pathlib import Path
 
-from .common import ROOT, read_csv
+from .common import ROOT, env, read_csv, settings
 
 
 def _print(obj) -> None:
@@ -35,6 +35,22 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("validate", "render", "transcribe"):
         x = sub.add_parser(name, help=f"{name} a rights-ledger asset")
         x.add_argument("--asset-id", required=True)
+        if name == "render":
+            x.add_argument("--ratios", default="", help="comma list of 9:16,1:1,16:9 (default from ledger/settings)")
+
+    cu = sub.add_parser("clip-url", help="Manual clipper: long video link/file -> N viral clips (rights-checked)")
+    cu.add_argument("source", help="YouTube link (own verified channel or CC BY), finished live stream, https video link, or local file")
+    cu.add_argument("--count", type=int, default=5); cu.add_argument("--ratios", default="9:16")
+    cu.add_argument("--style", default="bold_pop"); cu.add_argument("--no-cold-open", action="store_true")
+    cu.add_argument("--basis", default="", help="rights basis for files/direct links: original|permission|licensed|cc_by|public_domain")
+    cu.add_argument("--evidence", default="", help="rights evidence (required with --basis)")
+    cu.add_argument("--max-minutes", type=int, default=240)
+
+    sub.add_parser("verify-channel", help="Verify which YouTube channels you own (Google OAuth, read-only)")
+    w = sub.add_parser("web", help="Run the web app (TT_DEV=1 for local development)")
+    w.add_argument("--host", default="127.0.0.1"); w.add_argument("--port", type=int, default=8000)
+    sub.add_parser("worker", help="Run web background workers without the web server")
+    sub.add_parser("stripe-setup", help="Create the TrendTide product + $2/day, $25/month, $250/year prices in Stripe")
 
     u = sub.add_parser("upload", help="Dry-run by default; --execute uploads PRIVATE")
     u.add_argument("--id", "--asset-id", dest="output_id", required=True, help="output_id (sidecar name in output/shorts)")
@@ -82,7 +98,58 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "render":
             from .clipper import render_all
             from .state import published_titles
-            _print({"rendered": [str(x) for x in render_all(args.asset_id, published_titles=published_titles())]})
+            ratios = [r.strip() for r in args.ratios.split(",") if r.strip()] or None
+            _print({"rendered": [str(x) for x in render_all(args.asset_id, published_titles=published_titles(), ratios=ratios)]})
+        elif args.command == "clip-url":
+            import uuid
+            from .linkjob import run_link_job
+            spec = {"job_id": "link_" + uuid.uuid4().hex[:8], "count": args.count, "caption_style": args.style,
+                    "ratios": [r.strip() for r in args.ratios.split(",") if r.strip()], "cold_open": not args.no_cold_open,
+                    "rights_basis": args.basis, "rights_evidence": args.evidence, "max_seconds": args.max_minutes * 60}
+            if Path(args.source).is_file():
+                spec["upload_path"] = str(Path(args.source).resolve())
+            else:
+                spec["url"] = args.source
+            channels = set(settings().get("youtube", {}).get("my_channel_ids", []))
+            metas = run_link_job(spec, ROOT / "output" / "shorts", channels, lambda m: print("..", m, file=sys.stderr), record=True)
+            from .manifest import build_manifest
+            build_manifest()
+            _print({"clips": [{"file": m["file"], "ratio": m["ratio"], "hook": m["hook_text"], "seconds": m["duration_seconds"]}
+                              for m in metas], "gallery": str(ROOT / "output/manifests/index.html")})
+        elif args.command == "verify-channel":
+            from googleapiclient.discovery import build
+            from .publisher import oauth_credentials
+            yt = build("youtube", "v3", credentials=oauth_credentials(
+                ["https://www.googleapis.com/auth/youtube.readonly"], "readonly_token.json"))
+            items = yt.channels().list(part="snippet", mine=True, maxResults=50).execute().get("items", [])
+            path = ROOT / "config" / "settings.json"
+            cfg = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+            cfg.setdefault("youtube", {})["my_channel_ids"] = sorted({c["id"] for c in items} |
+                                                                      set(cfg.get("youtube", {}).get("my_channel_ids", [])))
+            path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+            _print({"verified": [{"id": c["id"], "title": c["snippet"]["title"]} for c in items]})
+        elif args.command == "web":
+            import uvicorn
+            from .web.app import create_app
+            uvicorn.run(create_app(), host=args.host, port=args.port, proxy_headers=True,
+                        forwarded_allow_ips=env("TT_TRUSTED_PROXIES", "127.0.0.1"))
+        elif args.command == "worker":
+            import threading
+            from .web.config import load
+            from .web.worker import loop
+            cfg = load()
+            loop(cfg.data_dir / "web.db", cfg.data_dir, threading.Event())
+        elif args.command == "stripe-setup":
+            from .web.billing import stripe
+            key = env("STRIPE_SECRET_KEY")
+            prod = stripe(key, "POST", "products", {"name": "TrendTide Pro", "description": "AI clipper: long video to viral clips"})
+            out = {}
+            for plan, (amount, interval) in {"DAILY": (200, "day"), "MONTHLY": (2500, "month"), "YEARLY": (25000, "year")}.items():
+                price = stripe(key, "POST", "prices", {"product": prod["id"], "currency": env("TT_CURRENCY", "usd"),
+                                                       "unit_amount": amount, "recurring": {"interval": interval},
+                                                       "lookup_key": f"trendtide_{plan.lower()}"})
+                out[f"STRIPE_PRICE_{plan}"] = price["id"]
+            _print({"add_to_.env": out, "mode": "TEST" if key.startswith("sk_test_") else "LIVE"})
         elif args.command == "transcribe":
             from .rights import load_asset, validate_asset
             from .transcripts import transcribe_owned_file

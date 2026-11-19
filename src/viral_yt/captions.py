@@ -60,7 +60,8 @@ def group_words(words, max_words: int = 3, max_gap: float = 0.6):
 
 
 def _header(w: int, h: int, font: str, st: Style, size_override: int | None) -> str:
-    size = size_override or int(h * st.size_ratio)
+    ref = min(w, h) * 16 / 9               # sizes are tuned for 1080x1920; keep them equal on 1:1 and 16:9
+    size = size_override or int(ref * st.size_ratio)
     # \kf sweeps PrimaryColour over SecondaryColour: sung words = accent, unsung = white
     primary, secondary = (st.accent, st.primary) if st.animation == "karaoke" else (st.primary, st.primary)
     return f"""[Script Info]
@@ -73,8 +74,8 @@ ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Cap,{font},{size},{primary},{secondary},&H00271811,{st.back},{st.bold},0,0,0,100,100,0,0,{st.border_style},{st.outline},{st.shadow},5,110,110,0,1
-Style: Hook,{font},{int(h * 0.0385)},&H00FFFFFF,&H00FFFFFF,&H10271811,&H10271811,1,0,0,0,100,100,0,0,3,20,0,8,90,90,230,1
-Style: Credit,{font},{max(26, int(h * 0.0178))},&H00E5E7EB,&H00FFFFFF,&H00111827,&H80000000,0,0,0,0,100,100,0,0,1,2,1,1,60,160,70,1
+Style: Hook,{font},{int(ref * 0.0385)},&H00FFFFFF,&H00FFFFFF,&H10271811,&H10271811,1,0,0,0,100,100,0,0,3,20,0,8,90,90,{int(h * 0.12) if h > w else int(h * 0.07)},1
+Style: Credit,{font},{max(26, int(ref * 0.0178))},&H00E5E7EB,&H00FFFFFF,&H00111827,&H80000000,0,0,0,0,100,100,0,0,1,2,1,1,60,160,70,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -86,7 +87,7 @@ def build_ass(words, target: Path, width: int = 1080, height: int = 1920, font: 
               max_words: int | None = None, caption_y: int | None = None, style: str = DEFAULT_STYLE) -> Path:
     """words: list of (start, end, word) relative to the output timeline."""
     st = STYLES.get(style, STYLES[DEFAULT_STYLE])
-    y = caption_y or int(height * st.y_ratio)
+    y = caption_y or int(height * (st.y_ratio if height > width else max(st.y_ratio, 0.80)))
     pos = r"{\an5\pos(%d,%d)}" % (width // 2, y)
     lines = [_header(width, height, font, st, size)]
     if hook_text:

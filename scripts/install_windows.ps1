@@ -1,6 +1,6 @@
 # TrendTide installer (Windows PowerShell). Usage:
-#   powershell -ExecutionPolicy Bypass -File .\scripts\install_windows.ps1 [-WithAI] [-WithVoice]
-param([switch]$WithAI, [switch]$WithVoice)
+#   powershell -ExecutionPolicy Bypass -File .\scripts\install_windows.ps1 [-WithAI] [-WithVoice] [-WithWeb]
+param([switch]$WithAI, [switch]$WithVoice, [switch]$WithWeb)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -19,6 +19,7 @@ if ($WithAI) {
   & $py -m pip install -r requirements-optional.txt
   & (Join-Path $root '.venv\Scripts\trendtide.exe') doctor --fetch-models | Out-Null   # YuNet face model (230 KB)
 }
+if ($WithWeb) { & $py -m pip install -r requirements-web.txt }
 if ($WithVoice) {
   New-Item -ItemType Directory -Force -Path 'models\piper' | Out-Null
   $base = 'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high'

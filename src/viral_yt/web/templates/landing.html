@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block main %}
+<section class="hero">
+  <div class="hero-copy">
+    <p class="eyebrow">Long video in. Viral clips out.</p>
+    <h1>Turn your streams and long videos into <span class="grad">ready-to-post Shorts</span>.</h1>
+    <p class="lead">Paste a YouTube link from your channel or a finished live stream, or upload a file. TrendTide finds the
+      moments with a real hook, cuts on natural pauses, follows whoever is talking and adds animated captions. It exports
+      9:16, 1:1 and 16:9.</p>
+    <div class="cta-row"><a class="btn" href="/signup">Start clipping</a><a class="btn ghost" href="#how">How it works</a></div>
+    <p class="fine">Built for creators who own their content. Monetisation-safe by design.</p>
+  </div>
+  <div class="hero-card" aria-hidden="true">
+    <div class="phone"><div class="phone-hook">THE PART NOBODY TELLS YOU</div><div class="phone-cap">retention <b>beats</b> clicks</div></div>
+    <div class="phone sq"><div class="phone-cap">square for feeds</div></div>
+  </div>
+</section>
+
+<section id="how" class="grid3">
+  <article class="card"><h3>1 · Paste or upload</h3><p>YouTube videos and finished live streams from channels you've verified, Creative Commons videos, or your own files.</p></article>
+  <article class="card"><h3>2 · We find the moments</h3><p>Hook detection, complete-thought endings, audio peaks, plus an optional AI editor pass. Cold open with the best quote.</p></article>
+  <article class="card"><h3>3 · Review, tweak, post</h3><p>Trim in the browser, fix any caption word, swap caption styles, then download MP4 + SRT for every platform.</p></article>
+</section>
+
+<section class="features">
+  <h2>Editor-grade output, automatically</h2>
+  <ul class="ticks">
+    <li>Active-speaker framing for podcasts and interviews: hard cuts between speakers, no seasick panning</li>
+    <li>Shot-aware crops: gameplay and screen recordings keep the full frame</li>
+    <li>4 caption styles with word-by-word highlighting</li>
+    <li>Cuts placed inside measured silences, never mid-word</li>
+    <li>Loudness-normalised audio (−14 LUFS) for every platform</li>
+    <li>9:16 Shorts/Reels/TikTok, 1:1 feed, 16:9 landscape</li>
+  </ul>
+</section>
+
+<section id="pricing" class="pricing">
+  <h2>Simple pricing</h2>
+  <div class="grid3">
+    {% for key, p in plans.items() %}
+    <article class="card plan {% if key == 'monthly' %}featured{% endif %}">
+      {% if key == 'monthly' %}<span class="badge">Most popular</span>{% endif %}
+      <h3>{{ p[0] }}</h3>
+      <p class="price">{{ p[1] }}<span>/{{ p[3] }}</span></p>
+      <ul class="ticks small">
+        <li>Up to {{ p[4] }} long videos per day</li><li>Sources up to {{ p[5] }} minutes</li>
+        <li>All aspect ratios & caption styles</li><li>Browser review editor</li>
+      </ul>
+      <a class="btn {% if key != 'monthly' %}ghost{% endif %}" href="/signup">Choose {{ p[0] }}</a>
+    </article>
+    {% endfor %}
+  </div>
+  <p class="fine center">Prices in USD, billed automatically each period until you cancel. Cancel any time from Billing. Taxes may apply.</p>
+</section>
+
+<section class="faq">
+  <h2>Questions</h2>
+  <details><summary>Can I clip any YouTube video?</summary><p>No. We clip videos on channels you've verified through Google, videos the uploader marked Creative Commons, and files you have the rights to. Reposting other people's videos gets channels struck and demonetised, so we don't do it.</p></details>
+  <details><summary>Live streams?</summary><p>Paste the stream link. If it's still live, we start automatically as soon as the replay is available.</p></details>
+  <details><summary>Do you store my card?</summary><p>No. Checkout and billing are hosted by Stripe.</p></details>
+</section>
+{% endblock %}

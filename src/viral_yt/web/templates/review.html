@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Review clip · TrendTide{% endblock %}
+{% block head %}<script src="/static/review.js" defer></script>{% endblock %}
+{% block main %}
+<div class="page-head"><h1>Review & edit</h1><a class="link" href="/app/jobs/{{ out.job_id }}">← Back to clips</a></div>
+<div class="editor" id="editor" data-oid="{{ out.id }}" data-csrf="{{ csrf }}">
+  <section class="stage card">
+    <div class="viewport ratio-{{ (out.ratio or '9:16').replace(':','x') }}" id="viewport">
+      <video id="player" playsinline preload="auto"></video>
+      <div class="ov-hook" id="ovHook"></div>
+      <div class="ov-cap" id="ovCap"></div>
+      <div class="ov-loading" id="ovLoading">Preparing preview…</div>
+    </div>
+    <div class="transport">
+      <button class="btn small" id="playBtn" type="button">Play</button>
+      <span id="timeLbl" class="mono">0.0 / 0.0</span>
+    </div>
+    <div class="timeline" id="timeline" aria-label="Trim timeline">
+      <div class="tl-sel" id="tlSel"></div><div class="tl-head" id="tlHead"></div>
+      <div class="tl-handle" id="hIn" role="slider" tabindex="0" aria-label="Trim start"></div>
+      <div class="tl-handle" id="hOut" role="slider" tabindex="0" aria-label="Trim end"></div>
+    </div>
+    <div class="row3 small">
+      <label>Start (s, source time)<input type="number" step="0.1" id="inStart"></label>
+      <label>End (s, source time)<input type="number" step="0.1" id="inEnd"></label>
+      <button class="btn small ghost" id="previewBtn" type="button">Update preview</button>
+    </div>
+    <p class="fine">Drag the handles or type times. You can extend up to 30 s beyond the original clip. Changing the trim rebuilds the captions.</p>
+  </section>
+  <section class="side card stack">
+    <label>Title<input id="title" maxlength="100"></label>
+    <label>Hook card (first 2.6 s)<input id="hook" maxlength="120"></label>
+    <div class="row2">
+      <label>Caption style<select id="style">{% for s in styles %}<option value="{{ s }}">{{ s.replace('_',' ').title() }}</option>{% endfor %}</select></label>
+      <label class="check"><input type="checkbox" id="cold"> Cold open</label>
+    </div>
+    <h3>Captions <span class="muted small">(click a line to jump)</span></h3>
+    <div class="caps" id="caps"></div>
+    <button class="btn small ghost" id="addCap" type="button">+ Add caption at playhead</button>
+    <button class="btn" id="renderBtn" type="button">Render final clip</button>
+    <p id="renderStatus" class="muted"></p>
+  </section>
+</div>
+{% endblock %}

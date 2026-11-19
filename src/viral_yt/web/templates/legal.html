@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.replace('-', ' ').title() }} · TrendTide{% endblock %}
+{% block main %}
+<article class="narrow card prose">
+{% if doc == "terms" %}
+  <h1>Terms of Service</h1>
+  <p class="fine">Template. Have it reviewed by a lawyer in your jurisdiction before launch.</p>
+  <p>TrendTide edits videos you provide into short clips. You must own each video you submit or hold a licence or written permission covering editing and republishing. Videos from YouTube channels you've verified, Creative Commons videos and public-domain material are also allowed.</p>
+  <p>Subscriptions renew automatically at the price shown (Day Pass $2/day, Monthly $25/month, Yearly $250/year, USD, plus applicable taxes) until cancelled in Billing. Cancellation takes effect at the end of the current period. Fees already paid are non-refundable except where the law requires otherwise.</p>
+  <p>Fair-use limits apply per plan. We may suspend accounts that breach the Acceptable Use Policy. The service is provided "as is". To the extent permitted by law, our liability is limited to the fees you paid in the previous 3 months.</p>
+{% elif doc == "privacy" %}
+  <h1>Privacy Policy</h1>
+  <p class="fine">Template. Review with counsel (PIPEDA / GDPR / CCPA as applicable).</p>
+  <p>We store your email, a salted scrypt hash of your password, session records, your jobs and the clips we generate. Stripe processes payments, and we never receive your card number. Google OAuth is used only to read which YouTube channels you own. We keep the channel ID and discard the access token.</p>
+  <p>Source videos are kept for 7 days so you can re-trim clips, then deleted automatically. Clips stay until you delete them. You can delete your videos at any time. Contact us to delete your account.</p>
+{% else %}
+  <h1>Acceptable Use Policy</h1>
+  <ul><li>No content you don't have the rights to. Re-uploading other creators' videos is not allowed.</li>
+  <li>No unlawful, hateful, sexually exploitative or harassing content.</li>
+  <li>No attempts to bypass limits, probe security or access other users' data.</li>
+  <li>Credit creators when using Creative Commons or licensed material.</li></ul>
+{% endif %}
+</article>
+{% endblock %}

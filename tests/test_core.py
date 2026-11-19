@@ -222,6 +222,87 @@ class TestClipEngine(unittest.TestCase):
         self.assertIn("\\kf", (Path(_TMP) / "karaoke_fill.ass").read_text())
 
 
+class TestV22(unittest.TestCase):
+    def test_active_speaker_switch(self):
+        from viral_yt.reframe import SAMPLE_FPS, plan_segments
+        n = 12 * SAMPLE_FPS
+        faces = [[(140, 150, 40, 130, 160, 150, 170), (480, 150, 40, 470, 160, 490, 170)]] * n
+        motion = [[3.0, 0.1] if i < n // 2 else [0.1, 3.0] for i in range(n)]
+        segs = plan_segments(12.0, [], faces, 1920, 1080, 640, 9 / 16, motion, [True] * n)
+        self.assertEqual([s["mode"] for s in segs], ["crop", "crop"])
+        self.assertAlmostEqual(segs[0]["end"], 6.0)
+        self.assertLess(segs[0]["x"], segs[1]["x"])
+        # no speech anywhere -> keep the whole frame
+        quiet = plan_segments(12.0, [], faces, 1920, 1080, 640, 9 / 16, motion, [False] * n)
+        self.assertEqual([s["mode"] for s in quiet], ["fit"])
+
+    def test_speaker_hysteresis_ignores_blips(self):
+        from viral_yt.reframe import SAMPLE_FPS, speaker_timeline
+        n = 8 * SAMPLE_FPS
+        samples = [[(100, 0, 30), (400, 0, 30)]] * n
+        motion = [[0.1, 3.0] if 3 * SAMPLE_FPS <= i < 4 * SAMPLE_FPS else [3.0, 0.1] for i in range(n)]
+        tl = speaker_timeline(samples, motion, None, [100.0, 400.0], 640)
+        self.assertEqual(set(tl), {0})       # a 1-s interjection doesn't trigger a cut
+
+    def test_ratios(self):
+        from viral_yt.ffmpeg_tools import ratio_dims
+        from viral_yt.reframe import plan_segments
+        self.assertEqual(ratio_dims("1:1"), (1080, 1080))
+        land = plan_segments(10, [], None, 1920, 1080, 640, 16 / 9)
+        self.assertEqual(land[0]["mode"], "crop")
+        self.assertEqual(land[0]["cw"], 1920)
+        vert_to_land = plan_segments(10, [], None, 1080, 1920, 360, 16 / 9)
+        self.assertEqual(vert_to_land[0]["mode"], "fit")
+        with self.assertRaises(ValueError):
+            ratio_dims("4:5")
+
+    def test_youtube_links_and_rights(self):
+        from viral_yt.ingest import IngestError, LiveNotFinished, youtube_id, youtube_rights
+        vid = "dQw4w9WgXcQ"
+        for u in (f"https://www.youtube.com/watch?v={vid}&t=3", f"https://youtu.be/{vid}", f"https://www.youtube.com/live/{vid}",
+                  f"https://m.youtube.com/shorts/{vid}"):
+            self.assertEqual(youtube_id(u), vid, u)
+        self.assertIsNone(youtube_id(f"https://evil.com/watch?v={vid}"))
+        self.assertIsNone(youtube_id("https://www.youtube.com/watch?v=bad"))
+        info = {"video_id": vid, "channel_id": "UC1", "channel": "C", "license": "youtube", "live": "none"}
+        self.assertEqual(youtube_rights(info, {"UC1"})[0], "original")
+        self.assertEqual(youtube_rights({**info, "license": "creativeCommon"}, set())[0], "cc_by")
+        with self.assertRaises(IngestError):
+            youtube_rights(info, {"UC2"})
+        with self.assertRaises(LiveNotFinished):
+            youtube_rights({**info, "live": "live"}, {"UC1"})
+
+    def test_ssrf_validator(self):
+        from viral_yt.ingest import IngestError, validate_public_url
+        for bad in ("http://example.com/a.mp4", "https://127.0.0.1/a", "https://10.0.0.5/a", "https://[::1]/a",
+                    "https://u:p@example.com/a", "https://example.com:8443/a", "file:///etc/passwd"):
+            with self.assertRaises(IngestError, msg=bad):
+                validate_public_url(bad)
+
+    def test_vtt_word_timings(self):
+        from viral_yt.ingest import parse_vtt_words
+        vtt = ("WEBVTT\n\n00:00:01.000 --> 00:00:03.000 align:start\n"
+               "hello<00:00:01.500><c> big</c><00:00:02.000><c> world</c>\n\n"
+               "00:00:03.000 --> 00:00:04.000\nplain line here\n")
+        words = parse_vtt_words(vtt)
+        self.assertEqual([w[2] for w in words], ["hello", "big", "world"])
+        self.assertEqual(words[1][0], 1.5)
+
+    def test_password_and_webhook_crypto(self):
+        import hashlib, hmac, time as _t
+        from viral_yt.web.security import hash_password, password_problem, verify_password
+        from viral_yt.web.billing import BillingError, verify_signature
+        h = hash_password("correct horse battery")
+        self.assertTrue(verify_password("correct horse battery", h))
+        self.assertFalse(verify_password("wrong", h))
+        self.assertIsNotNone(password_problem("short"))
+        body, ts = b'{"id":"evt_1"}', int(_t.time())
+        sig = hmac.new(b"whsec_x", f"{ts}.".encode() + body, hashlib.sha256).hexdigest()
+        self.assertEqual(verify_signature(body, f"t={ts},v1={sig}", "whsec_x")["id"], "evt_1")
+        with self.assertRaises(BillingError):
+            verify_signature(body + b" ", f"t={ts},v1={sig}", "whsec_x")
+
+
 @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg not installed")
 class TestRenderSmoke(unittest.TestCase):
     def test_render_clip(self):

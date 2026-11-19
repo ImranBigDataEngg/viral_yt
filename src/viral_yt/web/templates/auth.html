@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ "Create your account" if mode == "signup" else "Log in" }} · TrendTide{% endblock %}
+{% block main %}
+<section class="narrow card">
+  <h1>{{ "Create your account" if mode == "signup" else "Welcome back" }}</h1>
+  {% if error %}<p class="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/{{ mode }}" class="stack" autocomplete="on">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% if mode == "login" %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+    <label>Email<input type="email" name="email" required maxlength="254" value="{{ email or '' }}" autocomplete="email"></label>
+    <label>Password<input type="password" name="password" required minlength="{{ 10 if mode == 'signup' else 1 }}" maxlength="200"
+      autocomplete="{{ 'new-password' if mode == 'signup' else 'current-password' }}"></label>
+    {% if mode == "signup" %}
+      <p class="fine">At least 10 characters. A passphrase works well.</p>
+      <label class="check"><input type="checkbox" name="terms" required> I agree to the <a href="/legal/terms">Terms</a> and
+        <a href="/legal/acceptable-use">Acceptable Use Policy</a>, and I'll only process videos I have the rights to.</label>
+      <button class="btn">Create account</button>
+      <p class="fine">Already have one? <a href="/login">Log in</a></p>
+    {% else %}
+      <button class="btn">Log in</button>
+      <p class="fine">New here? <a href="/signup">Create an account</a></p>
+    {% endif %}
+  </form>
+</section>
+{% endblock %}

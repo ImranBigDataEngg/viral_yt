@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Billing · TrendTide{% endblock %}
+{% block main %}
+<div class="page-head"><h1>Billing</h1></div>
+{% if welcome %}<p class="alert ok">Account created. Choose a plan to start clipping.</p>{% endif %}
+{% if need %}<p class="alert">You need an active plan to process videos.</p>{% endif %}
+{% if status == "success" %}<p class="alert ok">Thanks! Your payment is being confirmed. This page updates within a few seconds of Stripe confirming it.</p>{% endif %}
+{% if status == "cancelled" %}<p class="alert">Checkout cancelled. You weren't charged.</p>{% endif %}
+{% if error %}<p class="alert">{{ error }}</p>{% endif %}
+{% if ent %}
+  <div class="card"><h2>{{ ent.label }} <span class="pill ok">{{ ent.status }}</span></h2>
+    <p>Renews or ends on <span class="mono" data-epoch="{{ ent.current_period_end|int }}">{{ ent.current_period_end|int }}</span>. {{ ent.per_day }} videos/day, sources up to {{ ent.max_minutes }} min.</p>
+    <form method="post" action="/billing/portal"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn ghost">Manage, change plan or cancel</button></form>
+  </div>
+{% else %}
+  {% if sub %}<p class="alert">Your last subscription is <b>{{ sub.status }}</b>. Update your card in the billing portal or pick a plan.</p>
+    {% if user.stripe_customer %}<form method="post" action="/billing/portal"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn ghost">Open billing portal</button></form>{% endif %}{% endif %}
+  <div class="grid3">
+  {% for key, p in plans.items() %}
+    <article class="card plan {% if key == 'monthly' %}featured{% endif %}">
+      <h3>{{ p[0] }}</h3><p class="price">{{ p[1] }}<span>/{{ p[3] }}</span></p>
+      <ul class="ticks small"><li>{{ p[4] }} long videos/day</li><li>Sources up to {{ p[5] }} min</li><li>All formats & editor</li></ul>
+      <form method="post" action="/billing/checkout"><input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="plan" value="{{ key }}"><button class="btn {% if key != 'monthly' %}ghost{% endif %}">Subscribe: {{ p[1] }}/{{ p[3] }}</button></form>
+    </article>
+  {% endfor %}
+  </div>
+  <p class="fine">Recurring subscription, renews automatically until cancelled. Secure checkout by Stripe.</p>
+{% endif %}
+{% endblock %}

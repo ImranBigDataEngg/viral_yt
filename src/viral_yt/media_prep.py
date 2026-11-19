@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import subprocess
+import threading
 from pathlib import Path
 
 from .common import ROOT, local_file
@@ -33,11 +34,17 @@ def work_dir(source: Path) -> Path:
     return d
 
 
+_LOCK = threading.Lock()     # stage files are shared by parallel clip renders
+
+
 def extract_audio(source: Path) -> Path:
     out = work_dir(source) / "audio16k.wav"
-    if not out.is_file():
-        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source), "-vn", "-ac", "1",
-                        "-ar", "16000", str(out)], check=True)
+    with _LOCK:
+        if not out.is_file():
+            tmp = out.with_suffix(".tmp.wav")
+            subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source), "-vn", "-ac", "1",
+                            "-ar", "16000", str(tmp)], check=True)
+            tmp.replace(out)
     return out
 
 
