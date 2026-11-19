@@ -19,7 +19,7 @@ class TTSError(RuntimeError):
 def _piper(text: str, out: Path, model: Path) -> Path:
     last = ""
     if not model.is_file():
-        raise TTSError(f"piper voice model missing: {model} (run scripts/install_windows.ps1 -WithVoice)")
+        raise TTSError(f"piper voice model missing: {model} (run: py scripts/install.py --voice)")
     try:  # Python API (piper-tts >= 1.3 uses synthesize_wav; older releases use synthesize)
         import wave
         from piper import PiperVoice

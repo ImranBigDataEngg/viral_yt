@@ -14,7 +14,7 @@ uploads to your channel (private by default) → exports a download gallery + CS
 
 ```powershell
 cd D:\auto_viral_YT
-powershell -ExecutionPolicy Bypass -File .\scripts\install_windows.ps1 -WithAI -WithVoice
+py scripts\install.py --ai --web --voice                     # pure-Python installer, verifies downloads
 notepad .env                                   # paste YOUTUBE_API_KEY
 .\.venv\Scripts\python.exe .\scripts\demo_synthetic.py    # offline end-to-end demo, no keys
 .\.venv\Scripts\trendtide.exe discover         # ranked trends -> output\trends\latest_trends.csv
@@ -29,7 +29,7 @@ Edit a brief (fix every `[VERIFY]`/`[FILL]`, add your take, `"approved": true`),
 .\.venv\Scripts\trendtide.exe upload --id <id>                 # dry-run: shows exact metadata
 .\.venv\Scripts\trendtide.exe upload --id <id> --execute       # private upload (OAuth in browser once)
 .\.venv\Scripts\trendtide.exe run                              # whole daily cycle (safe defaults)
-powershell -File .\scripts\schedule_daily.ps1                  # run it every day at 9:17
+py scripts\schedule_daily.py --create                         # Task Scheduler, daily 9:17
 ```
 
 ### Lane B — clip long-form you own or have permission for

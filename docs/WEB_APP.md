@@ -6,7 +6,7 @@
 
 ## Run locally (5 minutes)
 ```powershell
-.\scripts\install_windows.ps1 -WithAI -WithWeb          # web deps + OpenCV + face model
+py scripts\install.py --ai --web                          # web deps + OpenCV + verified face model
 copy .env.example .env                                   # TT_DEV=1 is fine locally
 .\.venv\Scripts\trendtide.exe web                        # http://127.0.0.1:8000
 ```

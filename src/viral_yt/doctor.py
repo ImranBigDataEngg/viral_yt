@@ -18,11 +18,19 @@ def _ff_has(kind: str, name: str) -> bool:
     return f" {name} " in out
 
 
+YUNET_SHA256 = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+
+
 def fetch_models() -> str:
+    import hashlib
     from .reframe import YUNET
     target = ROOT / YUNET
     target.parent.mkdir(parents=True, exist_ok=True)
-    urllib.request.urlretrieve(YUNET_URL, target)
+    with urllib.request.urlopen(YUNET_URL, timeout=60) as r:
+        data = r.read()
+    if hashlib.sha256(data).hexdigest() != YUNET_SHA256:
+        raise RuntimeError("Face model checksum mismatch - download discarded")
+    target.write_bytes(data)
     return str(target)
 
 
@@ -46,7 +54,7 @@ def run_checks() -> list[dict]:
     from .reframe import YUNET
     add("YuNet face model", (ROOT / YUNET).is_file(), str(ROOT / YUNET), "trendtide doctor --fetch-models")
     add("faster-whisper (ASR)", importlib.util.find_spec("faster_whisper"), "optional", "pip install -r requirements-optional.txt")
-    add("piper (natural TTS)", importlib.util.find_spec("piper") or shutil.which("piper"), "optional", "pip install piper-tts + install_windows.ps1 -WithVoice")
+    add("piper (natural TTS)", importlib.util.find_spec("piper") or shutil.which("piper"), "optional", "py scripts/install.py --ai --voice")
     add("google client (upload)", importlib.util.find_spec("googleapiclient"), "", "pip install -r requirements.txt")
     add("YOUTUBE_API_KEY", env("YOUTUBE_API_KEY"), "set" if env("YOUTUBE_API_KEY") else "missing", "Add to .env")
     add("OAuth client", (ROOT / env("YOUTUBE_CLIENT_SECRET", ".secrets/client_secret.json")).is_file(), ".secrets/client_secret.json",
