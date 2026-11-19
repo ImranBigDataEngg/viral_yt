@@ -50,6 +50,9 @@ def main(argv: list[str] | None = None) -> int:
     w = sub.add_parser("web", help="Run the web app (TT_DEV=1 for local development)")
     w.add_argument("--host", default="127.0.0.1"); w.add_argument("--port", type=int, default=8000)
     sub.add_parser("worker", help="Run web background workers without the web server")
+    dg = sub.add_parser("dev-grant", help="LOCAL TESTING ONLY (TT_DEV=1): give an account an active plan without Stripe")
+    dg.add_argument("--email", required=True); dg.add_argument("--plan", default="monthly", choices=["daily", "monthly", "yearly"])
+    dg.add_argument("--days", type=int, default=30)
     sub.add_parser("stripe-setup", help="Create the TrendTide product + $2/day, $25/month, $250/year prices in Stripe")
 
     u = sub.add_parser("upload", help="Dry-run by default; --execute uploads PRIVATE")
@@ -139,6 +142,20 @@ def main(argv: list[str] | None = None) -> int:
             from .web.worker import loop
             cfg = load()
             loop(cfg.data_dir / "web.db", cfg.data_dir, threading.Event())
+        elif args.command == "dev-grant":
+            import time
+            from .web.config import load
+            from .web.db import DB
+            cfg = load()
+            if not cfg.dev:
+                raise RuntimeError("dev-grant only works with TT_DEV=1 (never in production)")
+            db = DB(cfg.data_dir / "web.db")
+            user = db.one("SELECT id FROM users WHERE email=?", (args.email.strip().lower(),))
+            if not user:
+                raise RuntimeError("No account with that email - sign up in the browser first")
+            db.run("INSERT OR REPLACE INTO subscriptions VALUES (?,?,?,?,?,?)",
+                   (user["id"], "sub_devgrant", args.plan, "active", time.time() + args.days * 86400, time.time()))
+            _print({"granted": args.plan, "email": args.email, "days": args.days})
         elif args.command == "stripe-setup":
             from .web.billing import stripe
             key = env("STRIPE_SECRET_KEY")
