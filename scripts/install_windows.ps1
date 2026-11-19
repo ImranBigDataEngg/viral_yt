@@ -15,7 +15,10 @@ python -m venv .venv
 $py = Join-Path $root '.venv\Scripts\python.exe'
 & $py -m pip install --upgrade pip
 & $py -m pip install -e . -r requirements.txt
-if ($WithAI) { & $py -m pip install -r requirements-optional.txt }
+if ($WithAI) {
+  & $py -m pip install -r requirements-optional.txt
+  & (Join-Path $root '.venv\Scripts\trendtide.exe') doctor --fetch-models | Out-Null   # YuNet face model (230 KB)
+}
 if ($WithVoice) {
   New-Item -ItemType Directory -Force -Path 'models\piper' | Out-Null
   $base = 'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high'

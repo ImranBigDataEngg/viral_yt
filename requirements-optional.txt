@@ -1,3 +1,4 @@
 # Optional local AI (free, offline after first model download)
 faster-whisper>=1.1,<2     # word-level captions + transcripts of AUTHORIZED media
 piper-tts>=1.2             # natural local text-to-speech (MIT); voice models downloaded separately
+opencv-python-headless>=4.8   # smart reframe (YuNet face detection + shot-aware crop)

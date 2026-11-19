@@ -46,6 +46,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("manifest", help="Write download CSV + HTML gallery with platform captions")
 
+    dr = sub.add_parser("doctor", help="Check FFmpeg/libass/GPU/models/keys and print exact fixes")
+    dr.add_argument("--fetch-models", action="store_true", help="Download the YuNet face model (230 KB, MIT)")
+
     r = sub.add_parser("run", help="Full daily cycle (safe defaults)")
     r.add_argument("--no-discover", action="store_true"); r.add_argument("--per-category", type=int, default=3)
     r.add_argument("--execute", action="store_true"); r.add_argument("--publish", action="store_true")
@@ -97,6 +100,14 @@ def main(argv: list[str] | None = None) -> int:
             from .manifest import build_manifest
             f, rows = build_manifest()
             _print({"csv": str(f), "gallery": str(f.with_name("index.html")), "items": len(rows)})
+        elif args.command == "doctor":
+            from .doctor import fetch_models, run_checks
+            if args.fetch_models:
+                print("downloaded:", fetch_models())
+            rows = run_checks()
+            for r in rows:
+                print(f"{'OK ' if r['ok'] else 'FIX'}  {r['check']:<24} {r['detail']}" + (f"\n     -> {r['fix']}" if r["fix"] else ""))
+            return 0 if all(r["ok"] for r in rows if r["check"] in ("python", "ffmpeg+ffprobe", "libass (captions)")) else 1
         elif args.command == "run":
             from .pipeline import run_cycle
             _print(run_cycle(not args.no_discover, args.per_category, args.execute, args.publish, args.share))

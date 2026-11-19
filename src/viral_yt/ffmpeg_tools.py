@@ -41,7 +41,9 @@ def layout_chain(src: str, layout: str, w: int, h: int, fps: int, out: str) -> s
     if layout == "crop":
         return (f"[{src}]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1,fps={fps}[{out}]")
     return (f"[{src}]split=2[lb_a][lb_b];"
-            f"[lb_a]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},gblur=sigma=28,eq=brightness=-0.10[lb_bg];"
+            # blur at 1/6 resolution then upscale: visually identical background, ~10x cheaper than full-res gblur
+            f"[lb_a]scale={w // 6}:{h // 6}:force_original_aspect_ratio=increase,crop={w // 6}:{h // 6},"
+            f"boxblur=6:2,scale={w}:{h}:flags=bilinear,eq=brightness=-0.10[lb_bg];"
             f"[lb_b]scale={w}:-2:force_original_aspect_ratio=decrease[lb_fg];"
             f"[lb_bg][lb_fg]overlay=(W-w)/2:(H-h)/2-{int(h*0.06)},setsar=1,fps={fps}[{out}]")
 
@@ -56,6 +58,52 @@ def run(cmd: list[str], cwd: Path | None = None) -> None:
         raise RuntimeError(f"FFmpeg failed ({proc.returncode}): {proc.stderr[-2500:]}")
 
 
-def encode_args(crf: int, preset: str, fps: int) -> list[str]:
-    return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p", "-r", str(fps),
-            "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart"]
+AUDIO_ARGS = ["-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart"]
+HW_CANDIDATES = ["h264_nvenc", "h264_qsv", "h264_amf", "h264_videotoolbox"]
+
+
+def probe_hw_encoder(cache: Path | None = None) -> str | None:
+    """Functionally test GPU encoders (listing != working: drivers can be too old). Cached per FFmpeg build."""
+    import json
+    ver = subprocess.run(["ffmpeg", "-hide_banner", "-version"], capture_output=True, text=True).stdout.split("\n")[0]
+    if cache and cache.is_file():
+        data = json.loads(cache.read_text())
+        if data.get("ffmpeg") == ver:
+            return data.get("encoder")
+    listed = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True).stdout
+    found = None
+    for enc in HW_CANDIDATES:
+        if enc not in listed:
+            continue
+        r = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+                            "color=c=black:s=640x360:d=0.4", "-c:v", enc, "-f", "null", "-"], capture_output=True)
+        if r.returncode == 0:
+            found = enc
+            break
+    if cache:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps({"ffmpeg": ver, "encoder": found}))
+    return found
+
+
+def video_args(crf: int, preset: str, fps: int, encoder: str | None = None) -> list[str]:
+    q = str(crf + 2)
+    if encoder == "h264_nvenc":
+        v = ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", q, "-b:v", "0", "-pix_fmt", "yuv420p"]
+    elif encoder == "h264_qsv":
+        v = ["-c:v", "h264_qsv", "-global_quality", q, "-preset", "medium"]
+    elif encoder == "h264_amf":
+        v = ["-c:v", "h264_amf", "-quality", "balanced", "-rc", "cqp", "-qp_i", q, "-qp_p", q]
+    elif encoder == "h264_videotoolbox":
+        v = ["-c:v", "h264_videotoolbox", "-q:v", "62", "-pix_fmt", "yuv420p"]
+    else:
+        v = ["-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p"]
+    return v + ["-r", str(fps), "-g", str(fps * 2)]
+
+
+def encode_args(crf: int, preset: str, fps: int, encoder: str | None = None) -> list[str]:
+    return video_args(crf, preset, fps, encoder) + AUDIO_ARGS
+
+
+def layout_fit(src: str, w: int, h: int, fps: int, out: str, tag: str = "lb") -> str:
+    return layout_chain(src, "blurfit", w, h, fps, out).replace("lb_", f"{tag}_")

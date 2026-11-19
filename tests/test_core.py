@@ -148,6 +148,80 @@ class TestCore(unittest.TestCase):
         self.assertIn("publishAt", sched["status"])
 
 
+class TestClipEngine(unittest.TestCase):
+    def _sents(self, n=30):
+        from viral_yt.media_prep import sentences
+        words, t = [], 0.0
+        for i in range(n):
+            line = ("Why does nobody talk about this?" if i % 7 == 0 else f"Point {i} adds real detail here today.").split()
+            for k, w in enumerate(line):
+                words.append((t, t + 0.35, w))
+                t += 0.4
+            t += 0.5
+        return sentences(words)
+
+    def test_sentences_from_words(self):
+        sents = self._sents(5)
+        self.assertEqual(len(sents), 5)
+        self.assertTrue(sents[0][2].endswith("?"))
+
+    def test_align_cut_prefers_silence(self):
+        from viral_yt.media_prep import align_cut
+        sil = [(9.6, 10.4)]
+        self.assertTrue(9.6 < align_cut(10.0, sil, "start") < 10.4)
+        self.assertAlmostEqual(align_cut(20.0, sil, "start"), 19.75)
+        self.assertAlmostEqual(align_cut(20.0, sil, "end"), 20.35)
+
+    def test_hybrid_llm_selection_with_retry(self):
+        from viral_yt.highlights import select_clips
+        sents = self._sents(40)
+        calls = []
+
+        def fake(prompt):
+            calls.append(prompt)
+            if len(calls) == 1:
+                return "sorry, not json"
+            import re
+            ids = [int(x) for x in re.findall(r"<candidate id=(\d+)>", prompt)]
+            return json.dumps({"clips": [{"id": i, "start": 0, "end": 10**6, "score": 90 - i, "title": f"T{i}",
+                                          "hook": "x", "quote": None, "reason": "r"} for i in ids]})
+        clips, stats = select_clips(sents, 3, 15, 40, use_llm=True, completer=fake)
+        self.assertEqual(stats["mode"], "hybrid-llm")
+        self.assertEqual(len(calls), 2)                   # retried once with the validation error
+        self.assertIn("previous reply was invalid", calls[1])
+        self.assertGreaterEqual(len(clips), 2)
+        for a, b in zip(clips, clips[1:]):
+            self.assertLessEqual(a["end"], b["start"])
+        self.assertLess(stats["llm_tokens_est"], 4000)
+
+    def test_llm_failure_falls_back_to_heuristic(self):
+        from viral_yt.highlights import select_clips
+        clips, stats = select_clips(self._sents(40), 3, 15, 40, use_llm=True, completer=lambda p: "nope")
+        self.assertEqual(stats["mode"], "heuristic")
+        self.assertIn("llm_error", stats)
+        self.assertTrue(clips)
+
+    def test_reframe_plan(self):
+        from viral_yt.reframe import SAMPLE_FPS, plan_segments
+        aw = 640
+        left = [[(150, 180, 120)]] * (4 * SAMPLE_FPS)
+        right = [[(500, 180, 120)]] * (4 * SAMPLE_FPS)
+        two = [[(100, 180, 90), (560, 180, 90)]] * (4 * SAMPLE_FPS)
+        none = [[]] * (4 * SAMPLE_FPS)
+        segs = plan_segments(16.0, [4.0, 8.0, 12.0, 12.3], left + right + two + none, 1920, 1080, aw)
+        self.assertEqual([s["mode"] for s in segs], ["crop", "crop", "fit"])   # two-shot + no-face merge into fit
+        self.assertLess(segs[0]["x"], segs[1]["x"])
+        self.assertTrue(all(0 <= s["x"] <= 1920 - s["cw"] for s in segs))
+        self.assertEqual(segs[-1]["end"], 16.0)
+
+    def test_caption_styles(self):
+        words = [(0.0, 0.4, "one"), (0.5, 0.9, "two"), (1.0, 1.3, "three.")]
+        for style in ("bold_pop", "karaoke_fill", "boxed", "clean_lower"):
+            body = build_ass(words, Path(_TMP) / f"{style}.ass", style=style).read_text()
+            self.assertIn(",Cap,", body)
+        self.assertIn("\\kf", (Path(_TMP) / "karaoke_fill.ass").read_text())
+
+
 @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg not installed")
 class TestRenderSmoke(unittest.TestCase):
     def test_render_clip(self):

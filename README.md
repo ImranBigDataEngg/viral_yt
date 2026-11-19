@@ -38,6 +38,12 @@ Add a row to `media\authorized\assets.csv` (see `examples\assets_template.csv`):
 `clip_ranges=auto` (or `12-48;95-140`), your voice-over WAV for third-party footage, `approved=true`.
 `trendtide render --asset-id X` cuts up to 3 self-contained highlights per source.
 
+### Clip engine v2.1 (compared with artbyjazi/autoclip → [docs/AUTOCLIP_COMPARISON.md](docs/AUTOCLIP_COMPARISON.md))
+Hybrid highlight picking (local heuristic + optional one-call LLM judge, 63–97 % fewer tokens), cuts inside measured
+silences, shot-aware smart reframe (YuNet faces → locked crop per shot; gameplay/two-shots → blur-fit), cold open
+with the best quote, 4 caption styles, GPU encoder auto-probe (NVENC/QSV/AMF/VideoToolbox), parallel renders,
+resumable cache. `trendtide doctor` checks everything.
+
 ## Commands
 | Command | What it does |
 |---|---|
@@ -49,9 +55,10 @@ Add a row to `media\authorized\assets.csv` (see `examples\assets_template.csv`):
 | `share --id ID` | Google Drive link (enable in `config/settings.json`) |
 | `manifest` | CSV + HTML gallery with TikTok/IG captions |
 | `run [--execute] [--share] [--no-discover]` | Full cycle |
+| `doctor [--fetch-models]` | Environment check with exact fixes; downloads the face model |
 
 ## Status
-Implemented & tested locally (12 tests + FFmpeg demo). Needs your credentials: discovery, upload, Drive.
+Implemented & tested locally (18 tests + FFmpeg demo). Needs your credentials: discovery, upload, Drive.
 Public API uploads need YouTube's API audit. Channel creation is manual. TikTok/IG posting is manual from the gallery.
 
 ## Safety & monetization

@@ -69,6 +69,12 @@ a source they provide, credit them), and public-domain footage (e.g. most NASA m
 
 ---
 
+### 1b. v2.1 clip-engine upgrade (after reviewing artbyjazi/autoclip)
+Hybrid heuristic + one-call LLM judging (63–97 % fewer tokens than whole-transcript windows), silence-aligned cuts,
+shot-aware YuNet smart reframe, cold open, 4 caption styles, multi-vendor GPU encoder probe, parallel renders,
+content-addressed stage cache, `doctor`. Details, benchmark and the honest "where autoclip is still ahead" list:
+[docs/AUTOCLIP_COMPARISON.md](docs/AUTOCLIP_COMPARISON.md).
+
 ## 2. Brand & channel (manual — needs your Google account)
 
 - **Name:** TrendTide · **Handle:** `@TrendTide` (check in YouTube; fallbacks above) · **Tagline:** *The story behind what's trending.*
@@ -116,7 +122,7 @@ a source they provide, credit them), and public-domain footage (e.g. most NASA m
 
 | Item | Status |
 |---|---|
-| All modules above, CLI, tests (12), synthetic end-to-end demo | **Implemented & tested locally** (Linux, FFmpeg 7) |
+| All modules above, CLI, tests (18), synthetic end-to-end demo, smart reframe verified on a 3-shot test video | **Implemented & tested locally** (Linux, FFmpeg 7) |
 | Windows install / scheduler scripts | Implemented — **needs run on your PC** |
 | Live discovery | Needs your `YOUTUBE_API_KEY` |
 | Upload / Drive share | Implemented — **needs your OAuth client + live verification** |

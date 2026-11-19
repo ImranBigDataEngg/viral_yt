@@ -97,6 +97,103 @@ def find_highlights(cues, min_seconds: float = 20, max_seconds: float = 58, coun
     for i, j, sc in best[count][0][2]:
         start, end = cues[i][0], cues[j][1]
         out.append({"start": round(start, 2), "end": round(end, 2), "duration": round(end - start, 2),
-                    "score": round(sc, 2), "hook_line": cues[i][2], "text": " ".join(c[2] for c in cues[i:j + 1]),
+                    "i": i, "j": j, "score": round(sc, 2), "hook_line": cues[i][2], "text": " ".join(c[2] for c in cues[i:j + 1]),
                     "editorial_review_required": True})
     return sorted(out, key=lambda c: c["start"])
+
+
+# ---------------------------------------------------------------------------
+# Hybrid selection: local heuristic proposes, optional LLM judges only the shortlist.
+# ---------------------------------------------------------------------------
+
+def _sentence_hook(text: str) -> float:
+    t = text.lower()
+    return (sum(1.0 for w in HOOK_WORDS if w in t) + t.count("?") * 1.2 + t.count("!") * 0.6
+            + len(re.findall(r"\b\d+(?:[.,]\d+)?%?\b", t)) * 0.8)
+
+
+def pick_quote(sents, s0: int, s1: int) -> int | None:
+    """Most quotable sentence (1.5-5 s long, not the opener) for an optional cold open."""
+    best, best_score = None, 0.9
+    for i in range(s0 + 1, s1 + 1):
+        dur = sents[i][1] - sents[i][0]
+        if 1.5 <= dur <= 5.0:
+            sc = _sentence_hook(sents[i][2]) + (0.5 if dur <= 3.5 else 0)
+            if sc > best_score:
+                best, best_score = i, sc
+    return best
+
+
+def _windows(sents, min_s, max_s, energy):
+    cues = [(s[0], s[1], s[2]) for s in sents]
+    out = []
+    for i in range(len(cues)):
+        for j in range(i, len(cues)):
+            dur = cues[j][1] - cues[i][0]
+            if dur > max_s:
+                break
+            if dur >= min_s:
+                out.append({"s0": i, "s1": j, "start": cues[i][0], "end": cues[j][1],
+                            "heur": score_window(cues, i, j, energy)})
+    return out
+
+
+def _overlap(a, b) -> float:
+    inter = max(0.0, min(a["end"], b["end"]) - max(a["start"], b["start"]))
+    return inter / max(1e-6, min(a["end"] - a["start"], b["end"] - b["start"]))
+
+
+def select_clips(sents, count: int = 3, min_s: float = 20, max_s: float = 58, energy=None,
+                 use_llm: bool = False, completer=None) -> tuple[list[dict], dict]:
+    """Return (clips, stats). sents = media_prep.sentences(words)."""
+    stats = {"sentences": len(sents), "mode": "heuristic", "llm_tokens_est": 0}
+    if not sents:
+        return [], stats
+    if use_llm:
+        from .llm import LLMError, estimate_tokens, rerank
+        wins = sorted(_windows(sents, min_s, max_s, energy), key=lambda w: w["heur"], reverse=True)
+        shortlist: list[dict] = []
+        k = min(16, max(8, count * 4))
+        for w in wins:
+            if all(_overlap(w, s) < 0.35 for s in shortlist):
+                shortlist.append({**w, "id": len(shortlist)})
+            if len(shortlist) >= k:
+                break
+        if shortlist:
+            try:
+                stats["llm_tokens_est"] = estimate_tokens(" ".join(
+                    sents[i][2] for c in shortlist for i in range(c["s0"], c["s1"] + 1))) + 450
+                judged = rerank(shortlist, sents, completer=completer)
+                hs = sorted(c["heur"] for c in shortlist)
+                rank = {c["id"]: 100 * hs.index(c["heur"]) / max(1, len(hs) - 1) for c in shortlist}
+                picks = []
+                for j in judged:
+                    if j["score"] < 50:
+                        continue
+                    base = shortlist[j["id"]]
+                    s0, s1 = j["s0"], j["s1"]
+                    if sents[s1][1] - sents[s0][0] < min_s:      # tightened too far -> keep candidate span
+                        s0, s1 = base["s0"], base["s1"]
+                    picks.append({"s0": s0, "s1": s1, "start": sents[s0][0], "end": sents[s1][1],
+                                  "score": round(0.7 * j["score"] + 0.3 * rank[j["id"]], 1), "title": j["title"],
+                                  "hook_line": sents[s0][2], "quote": j["quote"] if j["quote"] is not None else pick_quote(sents, s0, s1),
+                                  "reason": j["reason"], "source": "llm"})
+                chosen: list[dict] = []
+                for p in sorted(picks, key=lambda p: p["score"], reverse=True):
+                    if all(_overlap(p, c) == 0 for c in chosen):
+                        chosen.append(p)
+                    if len(chosen) >= count:
+                        break
+                if chosen:
+                    stats["mode"] = "hybrid-llm"
+                    return sorted(chosen, key=lambda c: c["start"]), stats
+            except LLMError as exc:
+                stats["llm_error"] = str(exc)
+    cues = [(s[0], s[1], s[2]) for s in sents]
+    clips = find_highlights(cues, min_s, max_s, count, energy)
+    out = []
+    for c in clips:
+        s0, s1 = c["i"], c["j"]
+        out.append({**c, "s0": s0, "s1": s1, "title": "", "quote": pick_quote(sents, s0, s1), "reason": "heuristic",
+                    "source": "heuristic"})
+    return out, stats

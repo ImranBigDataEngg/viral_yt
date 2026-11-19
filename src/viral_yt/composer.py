@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .captions import build_ass
 from .common import ROOT, is_true, local_file, settings
-from .ffmpeg_tools import check_ffmpeg, encode_args, layout_chain, loudnorm, probe_duration, run
+from .ffmpeg_tools import check_ffmpeg, encode_args, layout_chain, loudnorm, probe_duration, probe_hw_encoder, run
 from .originality import score as originality
 from .scriptgen import check_ready, load_brief, script_text
 from .transcripts import words_from_cues, write_srt
@@ -88,7 +88,16 @@ def compose(brief_ref: str, preset: str | None = None, published_titles: list[st
     out_file = OUT / f"{oid}.mp4"
     cmd += ["-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-t", str(dur),
             *encode_args(cfg["crf"], preset or cfg["preset"], fps), out_file.name]
-    run(cmd, cwd=OUT)
+    enc = None if cfg.get("hardware_encoder", "auto") == "off" else probe_hw_encoder(ROOT / "output" / ".encoder.json")
+    if enc:
+        cmd[-len(encode_args(cfg["crf"], preset or cfg["preset"], fps)) - 1:-1] = encode_args(cfg["crf"], preset or cfg["preset"], fps, enc)
+    try:
+        run(cmd, cwd=OUT)
+    except RuntimeError:
+        if not enc:
+            raise
+        cmd[-len(encode_args(cfg["crf"], preset or cfg["preset"], fps, enc)) - 1:-1] = encode_args(cfg["crf"], preset or cfg["preset"], fps)
+        run(cmd, cwd=OUT)
     desc = brief.get("description", "")
     rp = brief.get("research_pointer") or {}
     meta = {

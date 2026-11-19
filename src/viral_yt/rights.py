@@ -75,7 +75,9 @@ def validate_asset(asset: dict, require_publish: bool = False) -> tuple[Path, fl
         if not (0 <= a < b and 6 <= b - a <= 180):
             raise RightsError(f"clip_ranges entry {a}-{b} must last 6..180 s")
     if auto and not (asset.get("transcript_file") or "").strip():
-        raise RightsError("clip_ranges=auto needs transcript_file (own SRT or `transcribe` output)")
+        import importlib.util
+        if importlib.util.find_spec("faster_whisper") is None:
+            raise RightsError("clip_ranges=auto needs transcript_file, or `pip install faster-whisper` for automatic transcription")
     for key in ("transcript_file", "commentary_audio"):
         value = (asset.get(key) or "").strip()
         if value and not local_file(value).is_file():

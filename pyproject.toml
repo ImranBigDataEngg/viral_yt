@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trendtide"
-version = "2.0.0"
+version = "2.1.0"
 description = "Trend radar + original/permissioned YouTube Shorts studio (monetization-aware)"
 requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
 upload = ["google-api-python-client>=2.150,<3", "google-auth-oauthlib>=1.2,<2", "google-auth-httplib2>=0.2,<1"]
-ai = ["faster-whisper>=1.1,<2", "piper-tts>=1.2"]
+ai = ["faster-whisper>=1.1,<2", "piper-tts>=1.2", "opencv-python-headless>=4.8"]
 
 [project.scripts]
 trendtide = "viral_yt.cli:main"

@@ -1,10 +1,60 @@
 {
-  "brand": {"name": "TrendTide", "handle": "@TrendTide", "tagline": "The story behind what's trending.", "hashtags": ["#Shorts", "#Trending"]},
-  "discovery": {"region": "CA", "window_days": 7, "top": 10, "lanes": ["search", "chart", "cc"]},
-  "render": {"layout": "blurfit", "preset": "medium", "loudness_lufs": -14},
-  "clips": {"min_seconds": 20, "max_seconds": 58, "per_source": 3},
-  "voice": {"engine": "auto", "piper_model": "models/piper/en_US-ryan-high.onnx"},
-  "llm": {"engine": "none", "ollama_url": "http://127.0.0.1:11434", "ollama_model": "llama3.1:8b"},
-  "publishing": {"daily_upload_cap": 3, "min_originality_score": 70, "default_privacy": "private", "category_id": "24"},
-  "share": {"engine": "none", "drive_folder_name": "TrendTide Exports", "anyone_with_link": false}
+  "brand": {
+    "name": "TrendTide",
+    "handle": "@TrendTide",
+    "tagline": "The story behind what's trending.",
+    "hashtags": [
+      "#Shorts",
+      "#Trending"
+    ]
+  },
+  "discovery": {
+    "region": "CA",
+    "window_days": 7,
+    "top": 10,
+    "lanes": [
+      "search",
+      "chart",
+      "cc"
+    ]
+  },
+  "render": {
+    "layout": "blurfit",
+    "preset": "medium",
+    "loudness_lufs": -14,
+    "caption_style": "bold_pop",
+    "clip_layout": "smart",
+    "cold_open": true,
+    "hardware_encoder": "auto"
+  },
+  "clips": {
+    "min_seconds": 20,
+    "max_seconds": 58,
+    "per_source": 3,
+    "workers": 2,
+    "llm_rerank": true
+  },
+  "voice": {
+    "engine": "auto",
+    "piper_model": "models/piper/en_US-ryan-high.onnx"
+  },
+  "llm": {
+    "engine": "none",
+    "ollama_url": "http://127.0.0.1:11434",
+    "ollama_model": "llama3.1:8b",
+    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "model": "gemini-2.5-flash",
+    "api_key_env": "LLM_API_KEY"
+  },
+  "publishing": {
+    "daily_upload_cap": 3,
+    "min_originality_score": 70,
+    "default_privacy": "private",
+    "category_id": "24"
+  },
+  "share": {
+    "engine": "none",
+    "drive_folder_name": "TrendTide Exports",
+    "anyone_with_link": false
+  }
 }
