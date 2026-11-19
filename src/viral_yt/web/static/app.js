@@ -8,6 +8,26 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("[data-epoch]").forEach(el => {
     const t = parseInt(el.dataset.epoch, 10); if (t) el.textContent = new Date(t * 1000).toLocaleString();
   });
+  // landing: feature tabs
+  document.querySelectorAll(".tab[data-tab]").forEach(t => t.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(x => { x.classList.toggle("on", x === t); x.setAttribute("aria-selected", x === t); });
+    document.querySelectorAll(".panel").forEach(p => p.classList.toggle("on", p.id === t.dataset.tab));
+  }));
+  // landing: inline link validation
+  const hf = document.getElementById("heroForm");
+  if (hf) hf.addEventListener("submit", e => {
+    const v = document.getElementById("heroUrl").value.trim();
+    const ok = /^https:\/\/[^\s]+\.[^\s]+/i.test(v);
+    document.getElementById("heroErr").classList.toggle("hide", ok);
+    if (!ok) e.preventDefault();
+  });
+  // nav dropdowns on touch
+  document.querySelectorAll(".dd-btn").forEach(b => b.addEventListener("click", () => b.parentElement.classList.toggle("open")));
+  // essential-cookie notice
+  const cn = document.getElementById("cookieNote");
+  try { if (cn && !localStorage.getItem("ec_ok")) cn.classList.remove("hide"); } catch (e) { /* storage blocked */ }
+  const ck = document.getElementById("cookieOk");
+  if (ck) ck.addEventListener("click", () => { cn.classList.add("hide"); try { localStorage.setItem("ec_ok", "1"); } catch (e) {} });
   // score rings & bars (set through CSSOM, which CSP allows)
   document.querySelectorAll(".ring[data-score]").forEach(r => r.style.setProperty("--p", r.dataset.score));
   document.querySelectorAll(".bar[data-w]").forEach(b => b.style.setProperty("--w", b.dataset.w + "%"));

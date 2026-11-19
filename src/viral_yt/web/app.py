@@ -118,8 +118,19 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         return out
 
     # ---------------------------------------------------------------- public pages
+    def testimonials() -> list[dict]:
+        """Only REAL quotes the owner has permission to publish: config/testimonials.json entries with
+        "permission": true. Nothing is shown (the section is hidden) until real ones exist."""
+        from ..common import ROOT
+        f = ROOT / "config" / "testimonials.json"
+        try:
+            items = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else []
+        except ValueError:
+            items = []
+        return [t for t in items if isinstance(t, dict) and t.get("permission") is True and t.get("quote") and t.get("name")][:12]
+
     async def landing(req: Request):
-        return page(req, "landing.html")
+        return page(req, "landing.html", {"testimonials": testimonials()})
 
     async def legal(req: Request):
         doc = req.path_params["doc"]

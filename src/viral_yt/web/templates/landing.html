@@ -1,87 +1,126 @@
 {% extends "base.html" %}
 {% block mainclass %}{% endblock %}
 {% block main %}
-<section class="hero">
-  <div class="glow" aria-hidden="true"></div>
-  <p class="chip">✦ AI clipping for streamers, podcasters &amp; creators</p>
-  <h1>One long video.<br><span class="grad">Ten scroll-stopping clips.</span></h1>
-  <p class="lead">Paste a link. {{ brand }} finds the moments with a hook, frames whoever is talking, adds captions people actually read, and scores every clip. Ready for Shorts, Reels and TikTok.</p>
-  <form class="linkbar" method="get" action="/start">
-    <span class="linkicon" aria-hidden="true">🔗</span>
-    <input type="url" name="url" placeholder="Paste a YouTube or video link" aria-label="Video link" required>
-    <button class="btn lg">Get clips free →</button>
+<section class="hero2">
+  <div class="aurora" aria-hidden="true"></div>
+  <p class="eyebrow center">AI clipping · captions · auto-post</p>
+  <h1>One long video.<br><span class="grad">A week of viral clips.</span></h1>
+  <p class="lead center">EzzyClips Ultra finds your best moments, frames whoever's talking, captions every word and posts to YouTube, TikTok and Instagram.</p>
+  <form class="inputcard" method="get" action="/start" id="heroForm" novalidate>
+    <div class="ic-row">
+      <span class="linkicon" aria-hidden="true">🔗</span>
+      <input type="url" name="url" id="heroUrl" placeholder="Drop a YouTube or video link" aria-label="Video link" autocomplete="off">
+    </div>
+    <p class="ic-err hide" id="heroErr">That doesn't look like a video link. Try https://youtube.com/watch?v=…</p>
+    <div class="ic-actions">
+      <button class="btn white lg">Get clips</button>
+      <span class="or">or</span>
+      <a class="btn ghost lg" href="/signup?next=/app">⬆ Upload a file</a>
+    </div>
+    <p class="ic-note">Works with YouTube (your verified channel or Creative Commons), finished live streams, direct video links and uploads · English captions, dubbing in 10 languages</p>
   </form>
-  <p class="under">or <a href="/signup">upload a file</a> · works with finished live streams · 9:16 · 1:1 · 16:9</p>
-  <div class="mock" aria-hidden="true">
-    <div class="phone p1"><span class="score s92">92</span><div class="ph-hook">NOBODY TELLS YOU THIS</div><div class="ph-cap">retention <em>beats</em> clicks</div></div>
-    <div class="phone p2"><span class="score s87">87</span><div class="ph-cap">he said <em>WHAT?</em></div></div>
-    <div class="phone p3"><span class="score s81">81</span><div class="ph-cap"><em>3 rules</em> that work</div></div>
+</section>
+
+<section class="section" id="features">
+  <div class="tabs" role="tablist" aria-label="Features">
+    <button class="tab on" role="tab" data-tab="t1" aria-selected="true">✂️ AI clipping</button>
+    <button class="tab" role="tab" data-tab="t2" aria-selected="false">💬 Captions</button>
+    <button class="tab" role="tab" data-tab="t3" aria-selected="false">🎯 Reframe</button>
+    <button class="tab" role="tab" data-tab="t4" aria-selected="false">📈 Clip score</button>
+    <button class="tab" role="tab" data-tab="t5" aria-selected="false">🌐 Translate &amp; dub</button>
+    <button class="tab" role="tab" data-tab="t6" aria-selected="false">✦ Make original</button>
+  </div>
+  <div class="panels">
+    <div class="panel on" id="t1" role="tabpanel"><div class="pv-copy"><h3>Finds the moments worth posting</h3><p>Hooks, payoffs and audio peaks are detected in minutes, and every cut lands in a natural pause.</p></div>
+      <div class="pv pv-timeline" aria-hidden="true"><div class="tl-track"><i class="hl h1"></i><i class="hl h2"></i><i class="hl h3"></i></div><div class="tl-labels"><span>0:00</span><span>clip 1 · 0:41</span><span>clip 2 · 0:33</span><span>clip 3 · 0:52</span><span>58:12</span></div></div></div>
+    <div class="panel" id="t2" role="tabpanel"><div class="pv-copy"><h3>Captions people actually read</h3><p>Four styles with word-by-word highlighting. Fix any word in the browser editor.</p></div>
+      <div class="pv pv-caps" aria-hidden="true"><span class="c1">the <b>real</b> reason</span><span class="c2">THIS <b>CHANGES</b> EVERYTHING</span><span class="c3"><i>NOBODY</i> TALKS ABOUT</span><span class="c4">clean lower third</span></div></div>
+    <div class="panel" id="t3" role="tabpanel"><div class="pv-copy"><h3>Framing that follows the speaker</h3><p>Two people on camera? We cut to whoever is talking. Gameplay keeps the full frame. Export 9:16, 1:1 or 16:9.</p></div>
+      <div class="pv pv-reframe" aria-hidden="true"><div class="wide"><span class="face f1"></span><span class="face f2"></span><span class="crop"></span></div></div></div>
+    <div class="panel" id="t4" role="tabpanel"><div class="pv-copy"><h3>Know what to post first</h3><p>Each clip is scored 0–99 on hook, flow and value, so the strongest ones are listed first.</p></div>
+      <div class="pv pv-score" aria-hidden="true"><div class="ring" data-score="91"><span>91</span></div><ul class="minibars"><li>Hook<i class="bar" data-w="94"></i><b>94</b></li><li>Flow<i class="bar" data-w="88"></i><b>88</b></li><li>Value<i class="bar" data-w="90"></i><b>90</b></li></ul></div></div>
+    <div class="panel" id="t5" role="tabpanel"><div class="pv-copy"><h3>Reach new audiences</h3><p>Re-voice any clip in Spanish, Hindi, French and 7 more languages, with translated captions.</p></div>
+      <div class="pv pv-langs" aria-hidden="true"><span>🇪🇸 Español</span><span>🇮🇳 हिन्दी</span><span>🇫🇷 Français</span><span>🇩🇪 Deutsch</span><span>🇧🇷 Português</span><span>🇸🇦 العربية</span><span>🇹🇷 Türkçe</span><span>🇨🇳 中文</span></div></div>
+    <div class="panel" id="t6" role="tabpanel"><div class="pv-copy"><h3>Add your take, stay monetisable</h3><p>Open each clip with a short spoken take of your own: real commentary that platforms reward.</p></div>
+      <div class="pv pv-take" aria-hidden="true"><div class="take-card"><b>MY TAKE</b><p>“This is the moment the whole stream turned.”</p></div><span class="arrow">→</span><div class="take-clip">clip</div></div></div>
   </div>
 </section>
 
-<section id="how" class="section">
-  <p class="eyebrow">How it works</p>
-  <h2>From link to posted clip in three steps</h2>
-  <ol class="steps">
-    <li><span class="num">1</span><h3>Paste or upload</h3><p>A YouTube link from your channel, a finished live stream, a Creative Commons video, or any file you own.</p></li>
-    <li><span class="num">2</span><h3>AI finds the gold</h3><p>We transcribe, detect hooks, cut on natural pauses, track the speaker and caption every word. Each clip gets a score.</p></li>
-    <li><span class="num">3</span><h3>Tweak &amp; download</h3><p>Trim, fix any caption, swap the style in the browser editor, then download for every platform.</p></li>
-  </ol>
+<section class="section" id="who">
+  <p class="eyebrow center">Made for creators who own their content</p>
+  <div class="who">
+    <article><span>🎮</span><h3>Streamers &amp; gamers</h3><p>Finished stream in, highlights out before your next session.</p></article>
+    <article><span>🎙️</span><h3>Podcasters</h3><p>Two-camera episodes cut to whoever is speaking.</p></article>
+    <article><span>🎓</span><h3>Educators &amp; coaches</h3><p>Turn one lesson into a week of bite-size tips.</p></article>
+    <article><span>📺</span><h3>YouTubers</h3><p>Promote every long-form upload with Shorts that link back.</p></article>
+  </div>
+  <div class="platstrip" aria-label="Destinations"><span>Post to</span><b class="p-yt">YouTube Shorts</b><b class="p-tt">TikTok</b><b class="p-ig">Instagram Reels</b><span>· export for anywhere</span></div>
 </section>
 
-<section id="features" class="section">
-  <p class="eyebrow">Features</p>
-  <h2>Everything an editor would do, done in minutes</h2>
-  <div class="features">
-    <article class="feat big">
-      <h3>Clip score</h3><p>Every clip is rated on <b>hook</b>, <b>flow</b> and <b>value</b>, so you post the best ones first.</p>
-      <div class="scorecard" aria-hidden="true">
-        <div class="ring" data-score="88"><span>88</span></div>
-        <ul><li>Hook <i class="bar" data-w="92"></i></li><li>Flow <i class="bar" data-w="81"></i></li><li>Value <i class="bar" data-w="86"></i></li></ul>
-      </div>
-    </article>
-    <article class="feat"><span class="ico">🎯</span><h3>Speaker-aware framing</h3><p>Two people on camera? We cut to whoever is talking. Gameplay keeps the full frame.</p></article>
-    <article class="feat"><span class="ico">💬</span><h3>Animated captions</h3><p>Four styles with word-by-word highlighting, all editable.</p></article>
-    <article class="feat"><span class="ico">✂️</span><h3>Clean cuts</h3><p>Clips start and end in natural pauses, never mid-word, with a cold open from the best line.</p></article>
-    <article class="feat"><span class="ico">📐</span><h3>Every format</h3><p>9:16, 1:1 and 16:9, each reframed separately, with loudness levelled for every app.</p></article>
-    <article class="feat"><span class="ico">🔴</span><h3>Live streams</h3><p>Paste a stream that's still live and we start automatically when the replay is ready.</p></article>
-    <article class="feat"><span class="ico">⚡</span><h3>Fast &amp; private</h3><p>GPU-accelerated rendering when available. Your videos are visible only to you, and sources are auto-deleted after 7 days.</p></article>
-    <article class="feat"><span class="ico">🛡️</span><h3>Monetisation-safe</h3><p>Built for content you own. No reposting, no strikes, no demonetised channel.</p></article>
+<section class="section">
+  <div class="module">
+    <div class="m-copy"><p class="eyebrow">Highlight engine</p><h2>Smart about what's interesting</h2>
+      <p>A fast local model shortlists hooks, questions, numbers and payoffs. An optional AI editor then judges the shortlist in one pass, using a fraction of the tokens of tools that read the whole transcript.</p>
+      <ul class="ticks"><li>Cuts inside real pauses, never mid-word</li><li>Cold open with the clip's best line</li><li>Up to 10 clips per video</li></ul></div>
+    <div class="m-art art-a" aria-hidden="true"><div class="bubble b1">“Why does nobody talk about this?”</div><div class="bubble b2">hook ✓</div><div class="bubble b3">payoff ✓</div></div>
+  </div>
+  <div class="module rev">
+    <div class="m-copy"><p class="eyebrow">Browser editor</p><h2>Tweak anything in seconds</h2>
+      <p>Drag to trim, fix a caption word, switch the style or rewrite the hook, with a live preview, then render the final clip.</p>
+      <ul class="ticks"><li>Trim handles with ±30 s of extra footage</li><li>Caption text &amp; timing editing</li><li>MP4 + SRT downloads, or a zip of everything</li></ul></div>
+    <div class="m-art art-b" aria-hidden="true"><div class="ed-phone"><i></i></div><div class="ed-rows"><i></i><i></i><i></i><i></i></div></div>
   </div>
 </section>
 
-<section id="pricing" class="section">
-  <p class="eyebrow">Pricing</p>
-  <h2>Pick a pass. Cancel anytime.</h2>
-  <div class="plans">
-    {% for key, p in plans.items() %}
-    <article class="plan {% if key == 'monthly' %}hot{% endif %}">
-      {% if key == 'monthly' %}<span class="badge">Most popular</span>{% endif %}
-      {% if key == 'yearly' %}<span class="badge alt">2 months free</span>{% endif %}
-      <h3>{{ p[0] }}</h3>
-      <p class="price">{{ p[1] }}<span>/{{ p[3] }}</span></p>
-      <ul class="ticks"><li>{{ p[4] }} long videos per day</li><li>Sources up to {{ p[5] }} min</li><li>All formats &amp; caption styles</li><li>Browser editor &amp; clip scores</li></ul>
-      <a class="btn {% if key != 'monthly' %}ghost{% endif %} block" href="/signup">Start with {{ p[0] }}</a>
-    </article>
+<section class="section" id="publish">
+  <div class="fullblock">
+    <p class="eyebrow center">Auto-post</p><h2 class="center">Select. Post. Done.</h2>
+    <p class="lead center">Connect your accounts once with each platform's official login, pick your clips and publish to YouTube, TikTok and Instagram in one click.</p>
+    <div class="flow" aria-hidden="true"><span class="fbox">☑ 3 clips selected</span><span class="farrow">→</span><span class="fbox p-yt">YouTube</span><span class="fbox p-tt">TikTok</span><span class="fbox p-ig">Instagram</span></div>
+  </div>
+  <div class="three">
+    <article><h3>Official APIs only</h3><p>No password sharing and no browser bots. Tokens are encrypted, and you can disconnect anytime.</p></article>
+    <article><h3>Private by default</h3><p>You choose visibility per platform. Public posts need an originality score of 70+.</p></article>
+    <article><h3>Your files, your rights</h3><p>Clips are visible only to you. Sources are deleted automatically after 7 days.</p></article>
+  </div>
+</section>
+
+{% if testimonials %}
+<section class="section" id="love">
+  <p class="eyebrow center">Creators on {{ brand }}</p><h2 class="center">Loved by people who post every day</h2>
+  <div class="marquee"><div class="mq-track">
+    {% for t in testimonials + testimonials %}
+    <figure class="quote"><blockquote>“{{ t.quote }}”</blockquote><figcaption><span class="avatar">{{ t.name[:1] }}</span><span><b>{{ t.name }}</b><br><span class="muted small">{{ t.role }}</span></span></figcaption></figure>
     {% endfor %}
+  </div></div>
+</section>
+{% endif %}
+
+<section class="section" id="pricing">
+  <div class="pricebar">
+    <div><p class="eyebrow">Pricing</p><h2>Pay for a day, a month or a year</h2><p class="muted">All features on every plan. Cancel anytime.</p></div>
+    <div class="pills3">
+      {% for key, p in plans.items() %}<a class="pp {% if key == 'monthly' %}hot{% endif %}" href="/signup"><b>{{ p[1] }}</b><span>/{{ p[3] }}</span><em>{{ p[0] }}</em></a>{% endfor %}
+    </div>
   </div>
-  <p class="fine center">USD. Renews automatically until cancelled. Taxes may apply.</p>
 </section>
 
-<section class="section faq">
-  <h2>Questions</h2>
-  <details><summary>Can I clip any YouTube video?</summary><p>No. You can clip videos from channels you've verified with Google, Creative Commons videos, and files you have rights to. Reposting other people's videos gets channels struck and demonetised, so we don't allow it.</p></details>
-  <details><summary>How long does it take?</summary><p>Usually a few minutes for a one-hour video. You can watch the progress live and leave the page.</p></details>
-  <details><summary>What is the clip score?</summary><p>An estimate from the transcript: how strong the opening line is, how cleanly the clip flows, and how much payoff it carries. It helps you choose what to post first. It's not a guarantee of views.</p></details>
+<section class="section faq" id="faq">
+  <h2>Frequently asked questions</h2>
+  <details><summary>Can I clip any YouTube video?</summary><p>You can clip videos from channels you've verified, Creative Commons videos, and files you have rights to. Reposting other people's videos gets channels struck and demonetised, so we don't allow it.</p></details>
+  <details><summary>How long does it take?</summary><p>Usually a few minutes for an hour of video. Progress updates live, so you can leave the page.</p></details>
+  <details><summary>Will my clips be monetisable?</summary><p>Clips of your own content are. For permitted third-party clips, use "Make original" to add your own take. We never disguise other people's content, because platforms detect and penalise that.</p></details>
+  <details><summary>Which platforms can I post to?</summary><p>YouTube, TikTok and Instagram (Business/Creator accounts), through each platform's official API. You can also download MP4s for anywhere else.</p></details>
+  <details><summary>What is the clip score?</summary><p>An estimate from the transcript of hook strength, flow and payoff. It helps you choose what to post first, but it doesn't guarantee views.</p></details>
   <details><summary>Do you store my card?</summary><p>No. Checkout and billing are hosted by Stripe.</p></details>
 </section>
 
-<section class="cta-final">
-  <h2>Your next viral clip is already in your last video.</h2>
-  <form class="linkbar" method="get" action="/start">
-    <span class="linkicon" aria-hidden="true">🔗</span>
-    <input type="url" name="url" placeholder="Paste a video link" aria-label="Video link" required>
-    <button class="btn lg">Get clips →</button>
+<section class="final">
+  <h2>Your best clips are already in your last video.</h2>
+  <form class="inputcard small-card" method="get" action="/start">
+    <div class="ic-row"><span class="linkicon" aria-hidden="true">🔗</span><input type="url" name="url" placeholder="Drop a video link" aria-label="Video link" required></div>
+    <div class="ic-actions"><button class="btn white lg">Get clips</button><span class="or">or</span><a class="btn ghost lg" href="/signup?next=/app">⬆ Upload a file</a></div>
   </form>
 </section>
+<a class="promo" href="/signup">⚡ Try a Day Pass for $2, no commitment</a>
 {% endblock %}

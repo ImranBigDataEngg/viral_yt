@@ -2,35 +2,57 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{% block title %}{{ brand }}: long videos into viral clips{% endblock %}</title>
-<meta name="description" content="{{ brand }} turns your long videos and live streams into scored, captioned, perfectly framed Shorts, Reels and TikToks in minutes.">
-<meta name="theme-color" content="#0a0a14">
+<title>{% block title %}{{ brand }}: AI clipping for long videos{% endblock %}</title>
+<meta name="description" content="{{ brand }} turns your long videos and live streams into scored, captioned, perfectly framed Shorts, Reels and TikToks, then posts them for you.">
+<meta name="theme-color" content="#000000">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/app.js" defer></script>
 {% block head %}{% endblock %}
 </head>
 <body class="{% block bodyclass %}{% endblock %}">
+<a class="announce" href="/#features">✨ New: translate &amp; dub your clips into 10 languages <span>Learn more →</span></a>
 <header class="nav">
   <a class="brand" href="/"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span><span>EzzyClips<b>Ultra</b></span></a>
-  <nav>
+  <nav class="menu">
+    {% if not user %}
+    <div class="dd"><button class="dd-btn" type="button" aria-haspopup="true">Features ▾</button>
+      <div class="dd-panel">
+        <a href="/#features">AI clipping <em>Core</em></a><a href="/#features">Animated captions</a><a href="/#features">Speaker-aware reframe</a>
+        <a href="/#features">Clip score</a><a href="/#features">Translate &amp; dub <em>New</em></a><a href="/#features">Make it original <em>New</em></a>
+        <a href="/#publish">Auto-post to socials <em>New</em></a></div></div>
+    <div class="dd"><button class="dd-btn" type="button" aria-haspopup="true">Solutions ▾</button>
+      <div class="dd-panel"><a href="/#who">Streamers</a><a href="/#who">Podcasters</a><a href="/#who">Educators &amp; coaches</a><a href="/#who">Gamers</a></div></div>
+    <div class="dd"><button class="dd-btn" type="button" aria-haspopup="true">Resources ▾</button>
+      <div class="dd-panel"><a href="/#faq">FAQ</a><a href="/legal/acceptable-use">Rights &amp; fair use</a><a href="/legal/privacy">Privacy</a></div></div>
+    <a href="/#pricing">Pricing</a>
+    {% endif %}
+  </nav>
+  <div class="nav-actions">
     {% if user %}
       <a href="/app" class="{{ 'on' if path.startswith('/app') }}">Projects</a>
       <a href="/billing" class="{{ 'on' if path.startswith('/billing') }}">Billing</a>
       <a href="/account" class="{{ 'on' if path.startswith('/account') }}">Account</a>
       <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">Log out</button></form>
     {% else %}
-      <a href="/#how">How it works</a><a href="/#features">Features</a><a href="/#pricing">Pricing</a>
-      <a href="/login">Log in</a><a class="btn sm" href="/signup">Try it now</a>
+      <a href="/login">Sign in</a><a class="btn white sm" href="/signup">Sign up</a>
     {% endif %}
-  </nav>
+  </div>
 </header>
 {% if dev %}<div class="devbar">Development mode: payments are simulated.</div>{% endif %}
 <main class="{% block mainclass %}wrap{% endblock %}">{% block main %}{% endblock %}</main>
 <footer class="foot">
-  <div class="foot-brand"><span class="mark sm" aria-hidden="true"><i></i><i></i><i></i></span> {{ brand }}</div>
-  <div class="foot-links"><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/acceptable-use">Acceptable use</a></div>
-  <div class="muted small">Secure payments by Stripe. We never see your card.</div>
+  <div class="foot-cols">
+    <div class="foot-brand"><a class="brand" href="/"><span class="mark sm" aria-hidden="true"><i></i><i></i><i></i></span><span>EzzyClips<b>Ultra</b></span></a>
+      <p class="muted small">Long video in. Ready-to-post clips out.</p>
+      <span class="stripe-badge">🔒 Payments secured by Stripe</span></div>
+    <div><h4>Product</h4><a href="/#features">Features</a><a href="/#publish">Auto-post</a><a href="/#pricing">Pricing</a><a href="/signup">Get started</a></div>
+    <div><h4>Solutions</h4><a href="/#who">Streamers</a><a href="/#who">Podcasters</a><a href="/#who">Educators</a><a href="/#who">Gamers</a></div>
+    <div><h4>Resources</h4><a href="/#faq">FAQ</a><a href="/legal/acceptable-use">Rights &amp; fair use</a></div>
+    <div><h4>Legal</h4><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/acceptable-use">Acceptable use</a></div>
+  </div>
+  <div class="foot-bottom"><span>© {{ brand }}</span><span class="muted small">Essential cookies only. We never see your card.</span></div>
 </footer>
+<div class="cookie hide" id="cookieNote" role="status">We use essential cookies only (sign-in and security). <button class="btn white sm" id="cookieOk" type="button">OK</button></div>
 </body>
 </html>

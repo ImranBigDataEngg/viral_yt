@@ -1,0 +1,10 @@
+[
+  {
+    "quote": "Paste a REAL quote from a REAL customer here, word for word.",
+    "name": "Customer name as they agreed to be shown",
+    "role": "e.g. Twitch streamer, 40K followers",
+    "platform": "twitch",
+    "permission": false,
+    "_note": "Copy this file to testimonials.json. Set permission to true ONLY after the person agreed in writing that you can publish their words, name and title. Never invent testimonials: fake reviews are illegal in many countries (e.g. FTC rule, Competition Act)."
+  }
+]
