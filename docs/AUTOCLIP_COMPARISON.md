@@ -60,3 +60,5 @@ sources come from your own files or rights holders (see IMPLEMENTATION_PLAN §0)
 "Windowed" re-creates autoclip's input format (8-min windows, 60-s overlap, `[index]word` tagging, ~1.1k-token
 prompt per window). Trade-off: the LLM only sees what the heuristic shortlists, so a highlight the heuristic misses
 entirely can't be rescued. The shortlist is deliberately wide (≤16 non-overlapping windows) to keep recall high.
+
+See also the earlier review of the v1 codebase: [AUTOCLIP_COMPARISON_v1_baseline.md](AUTOCLIP_COMPARISON_v1_baseline.md).
