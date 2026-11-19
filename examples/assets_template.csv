@@ -1,0 +1,2 @@
+asset_id,category,source_file,source_video_url,owner,rights_basis,rights_evidence,transcript_file,commentary_audio,clip_start,clip_end,title,description,approved,publish_approved
+my_original_gaming_001,Gaming,media/authorized/my_gta_commentary.mp4,,Me,original,Recorded and owned by me,media/transcripts/my_gta_commentary.srt,media/authorized/my_narration.wav,0,40,GTA 6: what everyone's discussing,Original analysis and opinions based on verified information.,false,false
