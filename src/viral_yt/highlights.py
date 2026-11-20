@@ -43,6 +43,42 @@ def audio_energy(media: Path) -> dict[int, float]:
     return energy
 
 
+def energy_windows(energy: dict[int, float], duration: float, count: int = 3, min_s: float = 20,
+                   max_s: float = 58) -> list[dict]:
+    """Fallback for gameplay / music / low-speech videos: pick the loudest, most dynamic stretches.
+    Score = mean loudness + 0.5 x loudness range (action beats) + a bonus when the window opens on a rise (hook)."""
+    if not energy or duration < min_s:
+        return []
+    length = max(min_s, min(max_s, 30.0))
+    secs = int(duration)
+    floor = -70.0
+    vals = [max(floor, energy.get(t, floor)) for t in range(secs + 1)]
+    if max(vals) <= floor + 1:          # silent track
+        return []
+    cands = []
+    step = 2
+    for a in range(0, max(1, int(secs - length) + 1), step):
+        w = vals[a:a + int(length)]
+        if len(w) < min_s:
+            continue
+        srt = sorted(w)
+        mean = sum(w) / len(w)
+        rng = srt[int(len(srt) * 0.9)] - srt[int(len(srt) * 0.1)]
+        head = sum(w[:3]) / 3
+        before = sum(vals[max(0, a - 3):a]) / max(1, len(vals[max(0, a - 3):a])) if a else head
+        cands.append((mean + 0.5 * rng + max(0.0, head - before) * 0.8, a))
+    cands.sort(reverse=True)
+    picks: list[tuple[float, int]] = []
+    for sc, a in cands:
+        if all(abs(a - b) >= length for _, b in picks):
+            picks.append((sc, a))
+        if len(picks) >= count:
+            break
+    return sorted(({"start": float(a), "end": float(min(duration, a + length)), "duration": round(min(duration, a + length) - a, 2),
+                    "score": round(sc, 2), "hook_line": "", "title": "", "quote": None, "source": "energy",
+                    "reason": "low speech: loudest / most dynamic stretch"} for sc, a in picks), key=lambda c: c["start"])
+
+
 def score_window(cues, i: int, j: int, energy: dict[int, float] | None = None) -> float:
     start, end = cues[i][0], cues[j][1]
     text = " ".join(c[2] for c in cues[i:j + 1])

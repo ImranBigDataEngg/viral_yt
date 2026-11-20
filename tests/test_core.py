@@ -351,5 +351,24 @@ class TestRenderSmoke(unittest.TestCase):
         self.assertEqual(meta["duration_seconds"], 7.0)
 
 
+
+class EnergyFallbackTests(unittest.TestCase):
+    def test_low_speech_video_still_gets_clips(self):
+        from viral_yt.highlights import energy_windows
+        e = {t: -40.0 + (t % 3) for t in range(300)}
+        for t in range(120, 150):
+            e[t] = -12.0
+        clips = energy_windows(e, 300, 2, 20, 58)
+        self.assertEqual(len(clips), 2)
+        self.assertTrue(any(c["start"] <= 120 <= c["end"] for c in clips))
+        self.assertTrue(all(c["source"] == "energy" and 20 <= c["duration"] <= 58 for c in clips))
+        a, b = clips
+        self.assertGreaterEqual(b["start"], a["end"])
+
+    def test_silent_or_short_gives_nothing(self):
+        from viral_yt.highlights import energy_windows
+        self.assertEqual(energy_windows({t: -120.0 for t in range(100)}, 100), [])
+        self.assertEqual(energy_windows({0: -20.0}, 10), [])
+
 if __name__ == "__main__":
     unittest.main()

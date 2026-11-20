@@ -84,6 +84,8 @@ def select_highlight(cues: list[Cue], max_seconds: int = 50) -> tuple[float, flo
 
 
 def transcribe_owned_file(media: Path, output_srt: Path, model_size: str = "small", words_json: bool = True) -> Path:
+    import os
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")   # harmless on Windows without Developer Mode
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:

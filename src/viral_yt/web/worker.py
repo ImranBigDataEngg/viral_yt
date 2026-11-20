@@ -49,6 +49,8 @@ def _progress(db: DB, jid: str):
 def process(db: DB, data_dir: Path, job: dict) -> None:
     from ..ingest import IngestError, LiveNotFinished
     from ..social.http import PlatformError
+    from ..clipper import ClipError
+    from ..tts import TTSError
     from ..transform import TransformError
     spec = json.loads(job["spec"])
     jid, uid = job["id"], job["user_id"]
@@ -104,7 +106,7 @@ def process(db: DB, data_dir: Path, job: dict) -> None:
     except LiveNotFinished as exc:
         db.run("UPDATE jobs SET status='waiting', progress=?, not_before=?, updated=? WHERE id=?",
                (str(exc), now() + RETRY_LIVE_S, now(), jid))
-    except (IngestError, ValueError, TransformError, PlatformError) as exc:
+    except (IngestError, ValueError, TransformError, PlatformError, ClipError, TTSError) as exc:
         db.run("UPDATE jobs SET status='failed', error=?, progress='failed', updated=? WHERE id=?", (str(exc)[:500], now(), jid))
     except Exception:
         log.error("job %s crashed: %s", jid, traceback.format_exc())

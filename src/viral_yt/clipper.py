@@ -36,6 +36,10 @@ def _encoder() -> str | None:
     return probe_hw_encoder(ROOT / "output" / ".encoder.json")
 
 
+class ClipError(RuntimeError):
+    """User-facing clip-selection failure (message is safe to show)."""
+
+
 def plan_clips(asset: dict, source: Path, start: float, end: float) -> tuple[list[dict], list, dict]:
     """Return (plans, words, stats). Cached per source + settings."""
     cfg = settings()
@@ -55,6 +59,11 @@ def plan_clips(asset: dict, source: Path, start: float, end: float) -> tuple[lis
     sents = sentences(words)
     energy = audio_energy(source)
     clips, stats = select_clips(sents, count, ccfg["min_seconds"], ccfg["max_seconds"], energy, llm_on)
+    if not clips:   # gameplay, music, trailers: too little speech -> pick the most dynamic stretches by audio
+        from .highlights import energy_windows
+        clips = energy_windows(energy, end if end > 0 else probe_duration(source), count,
+                               ccfg["min_seconds"], ccfg["max_seconds"])
+        stats = {**stats, "mode": "energy_fallback"}
     sil = silences(source)
     for c in clips:                                     # cut inside measured silences, not at fixed pads
         c["start"], c["end"] = round(align_cut(c["start"], sil, "start"), 3), round(align_cut(c["end"], sil, "end"), 3)
@@ -245,6 +254,7 @@ def render_asset(asset: dict, source: Path, *, ratios: list[str] | None = None, 
                  progress=None) -> list[dict]:
     """Plan + render every highlight of one source in every requested ratio (parallel)."""
     check_ffmpeg()
+    source = Path(source).resolve()
     out_dir = out_dir or OUT
     out_dir.mkdir(parents=True, exist_ok=True)
     start = float(asset.get("clip_start") or 0)
@@ -254,12 +264,13 @@ def render_asset(asset: dict, source: Path, *, ratios: list[str] | None = None, 
         progress("selecting highlights")
     plans, words, stats = plan_clips(asset, source, start, end)
     if not plans:
-        raise RuntimeError("No highlight met the length/quality bar; widen clips.min/max_seconds or add clip_ranges")
+        raise ClipError("Couldn't find a clip-worthy moment: the video has too little speech or sound, or is shorter "
+                        f"than {settings()['clips']['min_seconds']} s. Try a longer video or set clip times manually.")
     for p in plans:
         p["end"] = min(float(p["end"]), actual)
     plans = [p for p in plans if float(p["end"]) - float(p["start"]) >= 3]   # transcript longer than media, etc.
     if not plans:
-        raise RuntimeError("No highlight fits inside the media duration")
+        raise ClipError("No highlight fits inside the media duration")
     ratios = ratios or [str(asset.get("ratio") or settings()["render"].get("ratio", "9:16"))]
     for r in ratios:
         ratio_dims(r)
