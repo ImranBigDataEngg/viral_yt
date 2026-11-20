@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 import threading
 import time
 import traceback
 import uuid
 from pathlib import Path
 
-from ..common import get_logger
+from ..common import env, get_logger
 from .db import DB, now
 
 log = get_logger("web.worker")
@@ -54,13 +55,19 @@ def process(db: DB, data_dir: Path, job: dict) -> None:
     from ..transform import TransformError
     spec = json.loads(job["spec"])
     jid, uid = job["id"], job["user_id"]
-    say = _progress(db, jid)
+    report = _progress(db, jid)
+    stage = ["starting"]
+
+    def say(msg):
+        stage[0] = str(msg)
+        report(msg)
     try:
         if job["kind"] == "link":
             from ..linkjob import run_link_job
             channels = {r["channel_id"] for r in db.all("SELECT channel_id FROM channels WHERE user_id=?", (uid,))}
             out_dir = job_dir(data_dir, uid, jid)
             spec["job_id"] = jid
+            spec["cache_dir"] = str(data_dir / "users" / uid / "ytcache")
             metas = run_link_job(spec, out_dir, channels, say)
             with db.tx() as c:
                 for m in metas:
@@ -107,19 +114,24 @@ def process(db: DB, data_dir: Path, job: dict) -> None:
         db.run("UPDATE jobs SET status='waiting', progress=?, not_before=?, updated=? WHERE id=?",
                (str(exc), now() + RETRY_LIVE_S, now(), jid))
     except (IngestError, ValueError, TransformError, PlatformError, ClipError, TTSError) as exc:
+        log.warning("job %s failed during %r: %s", jid, stage[0], exc)
+        print(f"[job {jid[:8]}] FAILED during '{stage[0]}': {exc}", file=sys.stderr, flush=True)
         db.run("UPDATE jobs SET status='failed', error=?, progress='failed', updated=? WHERE id=?", (str(exc)[:500], now(), jid))
-    except Exception:
-        log.error("job %s crashed: %s", jid, traceback.format_exc())
+    except Exception as exc:
+        tb = traceback.format_exc()
+        log.error("job %s crashed during %r: %s", jid, stage[0], tb)
+        print(f"[job {jid[:8]}] CRASHED during '{stage[0]}':\n{tb}", file=sys.stderr, flush=True)
+        detail = f" ({type(exc).__name__}: {str(exc)[:240]})" if env("TT_DEV", "0") == "1" else ""
         db.run("UPDATE jobs SET status='failed', error=?, progress='failed', updated=? WHERE id=?",
-               ("Processing failed. Please try again or contact support.", now(), jid))
-        if job["kind"] == "link":
-            shutil.rmtree(job_dir(data_dir, uid, jid) / "_source", ignore_errors=True)
+               (f"Processing failed while {stage[0]}{detail}. Please try again or contact support.", now(), jid))
+        # the downloaded source is kept (removed by cleanup_sources after the retention period) so a retry
+        # or the review editor doesn't have to download it again
 
 
 def cleanup_sources(data_dir: Path, retention_days: float) -> int:
     """Delete source videos older than the retention period (clips stay). Returns folders removed."""
     cutoff, n = time.time() - retention_days * 86400, 0
-    for src in (data_dir / "users").glob("*/jobs/*/_source"):
+    for src in [*(data_dir / "users").glob("*/jobs/*/_source"), *(data_dir / "users").glob("*/ytcache/*")]:
         if src.stat().st_mtime < cutoff:
             shutil.rmtree(src, ignore_errors=True)
             n += 1

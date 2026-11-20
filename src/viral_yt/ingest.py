@@ -190,7 +190,7 @@ def download_youtube(video_id: str, dest: Path, max_seconds: int, with_subs: boo
                 raise IngestError(_ytdlp_reason(str(exc2))) from exc2
         else:
             raise IngestError(_ytdlp_reason(msg)) from exc
-    vids = [p for p in dest.glob("source.*") if p.suffix.lower() in VIDEO_EXT]
+    vids = [p for p in dest.glob("source.*") if p.stem == "source" and p.suffix.lower() in VIDEO_EXT]
     if not vids:
         raise IngestError("Download failed or the video exceeded the length limit")
     subs = sorted(dest.glob("source*.vtt"))

@@ -75,5 +75,29 @@ class YtdlpFallback(unittest.TestCase):
                 ingest.download_youtube("abc", Path(tempfile.mkdtemp()), 3600)
 
 
+class DownloadCache(unittest.TestCase):
+    def test_second_job_reuses_download(self):
+        from viral_yt import linkjob
+        mods, calls = fake_ytdlp(sub_fails=False)
+        cache, msgs = Path(tempfile.mkdtemp()), []
+        with mock.patch.dict(sys.modules, mods):
+            v1, _ = linkjob._cached_youtube("vid1", Path(tempfile.mkdtemp()) / "_source", 3600, cache, msgs.append)
+            v2, _ = linkjob._cached_youtube("vid1", Path(tempfile.mkdtemp()) / "_source", 3600, cache, msgs.append)
+        self.assertEqual(len(calls), 1)                      # YouTube contacted once
+        self.assertTrue(v1.is_file() and v2.is_file() and v1 != v2)
+        self.assertIn("using the copy downloaded earlier", msgs)
+
+    def test_partial_stream_is_not_mistaken_for_video(self):
+        from viral_yt import linkjob
+        cache = Path(tempfile.mkdtemp())
+        (cache / "vid2").mkdir()
+        (cache / "vid2" / "source.f137.mp4").write_bytes(b"video-only")
+        mods, calls = fake_ytdlp(sub_fails=False)
+        with mock.patch.dict(sys.modules, mods):
+            v, _ = linkjob._cached_youtube("vid2", Path(tempfile.mkdtemp()) / "_source", 3600, cache, lambda m: None)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(v.name, "source.mp4")
+
+
 if __name__ == "__main__":
     unittest.main()
