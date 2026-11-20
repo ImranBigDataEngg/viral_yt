@@ -36,7 +36,13 @@
   },
   "voice": {
     "engine": "auto",
-    "piper_model": "models/piper/en_US-ryan-high.onnx"
+    "piper_model": "models/piper/en_US-ryan-high.onnx",
+    "voicestudio": {
+      "url": "",
+      "model": "",
+      "voice": "default",
+      "voices": {}
+    }
   },
   "llm": {
     "engine": "none",

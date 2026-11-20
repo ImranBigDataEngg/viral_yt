@@ -1,4 +1,5 @@
-"""Free, local voiceover. Order for engine=auto: piper (natural, MIT) -> ffmpeg flite (robotic fallback).
+"""Free, local voiceover. Order for engine=auto: VoiceStudio (only if VOICESTUDIO_URL is set) -> piper (natural, MIT)
+-> ffmpeg flite (robotic fallback).
 
 Your own recorded voice (a WAV you supply) always beats TTS for originality and retention.
 Synthetic voices are fine on YouTube but are disclosed in our metadata when realistic (containsSyntheticMedia).
@@ -60,9 +61,15 @@ def synthesize(text: str, out: Path, engine: str | None = None) -> tuple[Path, s
     engine = engine or cfg["engine"]
     out.parent.mkdir(parents=True, exist_ok=True)
     errors = []
-    order = ["piper", "flite"] if engine == "auto" else [engine]
+    from . import voicestudio
+    order = (["voicestudio"] if voicestudio.enabled() else []) + ["piper", "flite"] if engine == "auto" else [engine]
     for name in order:
         try:
+            if name == "voicestudio":
+                try:
+                    return voicestudio.speak(text, out, lang="en"), "voicestudio"
+                except voicestudio.VoiceStudioError as exc:
+                    raise TTSError(str(exc)) from exc
             if name == "piper":
                 return _piper(text, out, ROOT / cfg["piper_model"]), "piper"
             if name == "flite":

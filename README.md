@@ -53,6 +53,11 @@ resumable cache. `trendtide doctor` checks everything.
 - **Browser review editor:** trim handles, caption text and timing edits, hook, style and cold open, then the final render.
 - **Professional web app** with Stripe subscriptions ($2/day, $25/month, $250/year) and a hardened security model.
 
+### Optional VoiceStudio voice engine → [docs/VOICESTUDIO.md](docs/VOICESTUDIO.md)
+- Set `VOICESTUDIO_URL=http://127.0.0.1:3900` to use a local [VoiceStudio](https://github.com/debpalash/VoiceStudio)
+  for voiceovers, all dub languages and your own consented cloned voice on "Make it original". Piper is the fallback.
+- It runs as a separate HTTP service (AGPL-3.0, unmodified). Pick commercially licensed model weights; the default OmniVoice weights are non-commercial.
+
 ## Commands
 | Command | What it does |
 |---|---|

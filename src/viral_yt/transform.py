@@ -42,7 +42,11 @@ def voice_path(voice: str) -> Path:
 
 
 def available_languages() -> dict[str, str]:
-    """Languages whose voice model is installed (UI shows the rest as 'needs install')."""
+    """Languages whose voice model is installed (UI shows the rest as 'needs install').
+    A running VoiceStudio service (646 languages) makes every language in LANGS available."""
+    from . import voicestudio
+    if voicestudio.enabled() and voicestudio.health():
+        return {k: v[0] for k, v in LANGS.items()}
     return {k: v[0] for k, v in LANGS.items() if voice_path(voice_for(k)).is_file()}
 
 
@@ -77,8 +81,17 @@ def translate(texts: list[str], lang: str, translator=None) -> list[str]:
 
 # ------------------------------------------------------------------------------------------- speech
 def speak(text: str, out: Path, lang: str, engine: str | None = None) -> Path:
-    """Piper voice for the language. engine='flite' is only for tests/English (robotic)."""
+    """VoiceStudio (if configured and up) -> Piper voice for the language. engine='flite' is only for
+    tests/English (robotic); engine='voicestudio' or 'piper' forces one engine."""
     out.parent.mkdir(parents=True, exist_ok=True)
+    from . import voicestudio
+    if engine == "voicestudio" or (engine in (None, "auto") and voicestudio.enabled()):
+        try:
+            return voicestudio.speak(text, out, lang=lang)
+        except voicestudio.VoiceStudioError as exc:
+            if engine == "voicestudio":
+                raise TransformError(str(exc)) from exc
+            log.warning("VoiceStudio failed, falling back to Piper: %s", exc)
     if engine == "flite" or (lang == "en" and not voice_path(voice_for("en")).is_file()):
         from .tts import _flite
         return _flite(text, out, settings()["voice"].get("flite_voice", "slt"))
@@ -87,6 +100,11 @@ def speak(text: str, out: Path, lang: str, engine: str | None = None) -> Path:
         raise TransformError(f"{LANGS[lang][0]} voice not installed. Run: py scripts\\install.py --voices {lang}")
     from .tts import _piper
     return _piper(text, out, model)
+
+
+def _voicestudio_on() -> bool:
+    from . import voicestudio
+    return voicestudio.enabled()
 
 
 def _atempo_chain(f: float) -> str:
@@ -238,7 +256,8 @@ def make_original(output_id: str, take_text: str, out_dir: Path, voice_file: Pat
     new = dict(meta)
     new.update(output_id=new_id, file=str(out), duration_seconds=round(probe_duration(out), 2), added_commentary=True,
                take_text=take_text, voice="own" if voice_file else "tts", title=meta.get("title", ""),
-               contains_realistic_synthetic_media=meta.get("contains_realistic_synthetic_media", False))
+               contains_realistic_synthetic_media=bool(meta.get("contains_realistic_synthetic_media"))
+               or (not voice_file and _voicestudio_on()))
     new.pop("poster", None)
     return finalize(new, out_dir, None, record)
 

@@ -55,6 +55,11 @@ def run_checks() -> list[dict]:
     add("YuNet face model", (ROOT / YUNET).is_file(), str(ROOT / YUNET), "trendtide doctor --fetch-models")
     add("faster-whisper (ASR)", importlib.util.find_spec("faster_whisper"), "optional", "pip install -r requirements-optional.txt")
     add("piper (natural TTS)", importlib.util.find_spec("piper") or shutil.which("piper"), "optional", "py scripts/install.py --ai --voice")
+    from . import voicestudio
+    if voicestudio.enabled():
+        vs = voicestudio.config()["url"]
+        add("VoiceStudio (voices/dubbing)", voicestudio.health(), vs,
+            "Start the VoiceStudio app or its Docker service, or clear VOICESTUDIO_URL (see docs/VOICESTUDIO.md)")
     add("google client (upload)", importlib.util.find_spec("googleapiclient"), "", "pip install -r requirements.txt")
     add("YOUTUBE_API_KEY", env("YOUTUBE_API_KEY"), "set" if env("YOUTUBE_API_KEY") else "missing", "Add to .env")
     add("OAuth client", (ROOT / env("YOUTUBE_CLIENT_SECRET", ".secrets/client_secret.json")).is_file(), ".secrets/client_secret.json",

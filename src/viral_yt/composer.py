@@ -24,7 +24,9 @@ def _voice(brief: dict, oid: str) -> tuple[Path, str]:
         if not path.is_file():
             raise RuntimeError(f"voice_file not found: {path}")
         return path, "own"
-    path, _engine = synthesize(script_text(brief), ROOT / "media" / "voice" / f"{oid}.wav")
+    path, engine = synthesize(script_text(brief), ROOT / "media" / "voice" / f"{oid}.wav")
+    if engine == "voicestudio":  # neural / cloned voices are realistic -> disclose (YouTube containsSyntheticMedia)
+        brief["contains_realistic_synthetic_media"] = True
     return path, "tts"
 
 
