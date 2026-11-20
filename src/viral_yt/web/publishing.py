@@ -92,7 +92,31 @@ def validate_request(db: DB, user_id: str, body: dict) -> dict:
                                      "to post publicly). Use 'Make it original' to add your take first.")
         clean.append({"account": acc["id"], "platform": acc["platform"], "privacy": privacy})
     caption = str(body.get("caption") or "")[:2200]
-    return {"output_ids": [o["id"] for o in outs], "targets": clean, "caption": caption}
+    title = str(body.get("title") or "")[:100] if len(outs) == 1 else ""
+    when = body.get("schedule_at")
+    spec = {"output_ids": [o["id"] for o in outs], "targets": clean, "caption": caption, "title": title}
+    if when not in (None, "", 0):
+        try:
+            when = float(when)
+        except (TypeError, ValueError):
+            raise ValueError("Invalid schedule time")
+        if when < now() + 60:
+            raise ValueError("Pick a time at least a minute from now, or choose Post now")
+        if when > now() + 60 * 86400:
+            raise ValueError("You can schedule up to 60 days ahead")
+        spec["schedule_at"] = when
+    return spec
+
+
+def copy_for(meta: dict, platform: str, spec: dict, fallback_title: str) -> tuple[str, str]:
+    """(title, text) for one platform: what the user typed wins, else the clip's AI social copy."""
+    soc = (meta.get("social") or {}).get("platforms", {}).get(platform, {})
+    title = spec.get("title") or (meta.get("social") or {}).get("title") or fallback_title
+    if platform == "youtube":
+        text = spec.get("caption") or soc.get("description") or fallback_title
+    else:
+        text = spec.get("caption") or soc.get("caption") or fallback_title
+    return title[:100], text[:2200]
 
 
 def run_publish(db: DB, user_id: str, job_id: str, spec: dict, say) -> tuple[int, int]:
@@ -102,21 +126,21 @@ def run_publish(db: DB, user_id: str, job_id: str, spec: dict, say) -> tuple[int
         if not out:
             continue
         meta = json.loads(Path(out["meta_file"]).read_text(encoding="utf-8"))
-        tags = [t for t in meta.get("tags", []) if t]
-        caption = spec.get("caption") or meta.get("title") or ""
+        tags = [t for t in meta.get("tags", []) if t] or [h.lstrip("#") for h in (meta.get("social") or {}).get("hashtags", [])]
         for t in spec["targets"]:
             acc = db.one("SELECT * FROM social_accounts WHERE id=? AND user_id=?", (t["account"], user_id))
             pid = uuid.uuid4().hex[:16]
             if not acc:
                 continue
             say(f"posting {out['title'][:40]} to {acc['platform']}")
+            title, caption = copy_for(meta, acc["platform"], spec, out["title"] or "")
             try:
                 ad = adapter(acc["platform"])
                 tok = vault().open(acc["token_enc"])
                 tok = ad.refresh(tok)
                 db.run("UPDATE social_accounts SET token_enc=? WHERE id=?", (vault().seal(tok), acc["id"]))
                 res = ad.publish(tok, acc["account_id"], Path(out["file"]), {
-                    "title": out["title"] or caption[:90], "description": caption + (
+                    "title": title or caption[:90], "description": caption + (
                         f"\n\nFootage: {meta.get('source_owner')}" if meta.get("rights_basis") not in (None, "original") else ""),
                     "caption": caption, "tags": tags, "privacy": t["privacy"], "tiktok_privacy": t["privacy"],
                     "duration": meta.get("duration_seconds", 30),

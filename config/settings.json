@@ -62,5 +62,10 @@
     "engine": "none",
     "drive_folder_name": "TrendTide Exports",
     "anyone_with_link": false
+  },
+  "asr": {
+    "device": "auto",
+    "model": "small",
+    "cuda_compute_type": "int8_float16"
   }
 }

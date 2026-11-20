@@ -62,7 +62,7 @@ def plan_clips(asset: dict, source: Path, start: float, end: float) -> tuple[lis
     if raw.lower() != "auto":
         ranges = parse_ranges(raw) or [(start, end)]
         return [{"start": a, "end": b, "hook_line": "", "title": "", "quote": None, "source": "manual"} for a, b in ranges], words, {"mode": "manual"}
-    count = max(1, min(20, int(asset.get("clip_count") or ccfg["per_source"])))
+    count = max(1, min(30, int(asset.get("clip_count") or ccfg["per_source"])))
     min_s, max_s = ccfg["min_seconds"], ccfg["max_seconds"]
     if length != "auto":
         min_s, max_s = max(15, int(length) - 12), int(length) + 8
@@ -254,7 +254,6 @@ def render_clip(asset: dict, source: Path, plan: dict, oid: str, words_all, *, r
     speed = max(0.5, min(2.0, float(override.get("speed") or 1.0)))
     fade_in, fade_out = (max(0.0, min(2.0, float(override.get(k) or 0))) for k in ("fade_in", "fade_out"))
     gain = max(-12.0, min(12.0, float(override.get("volume_db") or 0)))
-    out_total = total / speed
     if preview:          # the browser editor previews speed/fades live (playbackRate), keep timings 1:1
         speed, fade_in, fade_out, gain = 1.0, 0.0, 0.0, 0.0
     out_total = total / speed
@@ -290,6 +289,8 @@ def render_clip(asset: dict, source: Path, plan: dict, oid: str, words_all, *, r
         return {"file": str(out_file), "duration_seconds": round(out_total, 2)}
     n, total_parts = part
     title = (asset.get("title") or "").strip()
+    if not title and plan.get("source") == "action" and asset.get("source_title"):
+        title = f"{asset['source_title'][:60]} — {hook.rstrip('…!.').lower()}"
     title = (f"{title} (Part {n})" if total_parts > 1 else title) if title else (plan.get("title") or hook)
     return {
         "output_id": oid, "asset_id": asset["asset_id"], "kind": "clip", "rendered_utc": datetime.now(timezone.utc).isoformat(),
@@ -298,6 +299,8 @@ def render_clip(asset: dict, source: Path, plan: dict, oid: str, words_all, *, r
         "rights_basis": basis, "rights_evidence": asset.get("rights_evidence"),
         "source_video_url": asset.get("source_video_url", ""), "source_owner": asset.get("owner", ""),
         "source_file": str(source), "file": str(out_file), "ratio": ratio, "duration_seconds": round(out_total, 2),
+        "source_title": (asset.get("source_title") or "")[:200], "detect": asset.get("detect", "auto"),
+        "transcript": " ".join(w[2] for w in cap_words)[:3000],
         "edit": {"speed": speed, "fade_in": fade_in, "fade_out": fade_out, "volume_db": gain},
         "range": [a, b], "plan": plan, "cold_open_seconds": round(qd, 2),
         "captions_included": bool(cap_words), "caption_style": style, "hook_text": hook, "layout": layout, "progress_bar": pbar,
@@ -325,6 +328,8 @@ def make_poster(video: Path) -> Path | None:
 
 def finalize(meta: dict, out_dir: Path, published_titles: list[str] | None = None, record: bool = True) -> dict:
     meta["originality_score"], meta["originality_reasons"] = originality(meta, published_titles)
+    from .social_copy import generate
+    meta["social"] = generate(meta)
     poster = make_poster(Path(meta["file"]))
     meta["poster"] = str(poster) if poster else ""
     (out_dir / f"{meta['output_id']}.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")

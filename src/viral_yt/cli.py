@@ -13,6 +13,39 @@ def _print(obj) -> None:
     print(json.dumps(obj, indent=2, ensure_ascii=False, default=str))
 
 
+def _lan_ip() -> str:
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))        # no packet is sent; just picks the outgoing interface
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
+
+
+def _enable_lan(port: int) -> str:
+    """Serve on the home network so a phone/iPad on the same Wi-Fi can use the app. Plain http is only allowed in
+    dev mode; for access from anywhere (or https) use Tailscale - see docs/MOBILE.md."""
+    import os
+    if env("TT_DEV", "0") != "1":
+        raise SystemExit("--lan needs TT_DEV=1 (plain http on your home Wi-Fi). For https / access from anywhere use "
+                         "Tailscale: see docs/MOBILE.md")
+    ip = _lan_ip()
+    if ip.startswith("127."):
+        raise SystemExit("Couldn't find this computer's Wi-Fi address. Is it connected to a network?")
+    os.environ["TT_BASE_URL"] = f"http://{ip}:{port}"
+    hosts = {h.strip() for h in env("TT_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if h.strip()} | {ip}
+    os.environ["TT_ALLOWED_HOSTS"] = ",".join(sorted(hosts))
+    os.environ["TT_EXTRA_ORIGINS"] = f"http://127.0.0.1:{port},http://localhost:{port}"
+    bar = "=" * 60
+    print(f"\n{bar}\n  On your phone or iPad (same Wi-Fi) open:\n\n      http://{ip}:{port}\n\n"
+          f"  Tip: Share -> Add to Home Screen for an app icon.\n  If it doesn't load, allow Python through Windows "
+          f"Firewall (Private networks).\n{bar}\n", flush=True)
+    return "0.0.0.0"
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="trendtide", description="TrendTide | trend radar + original/permissioned Shorts studio")
     sub = p.add_subparsers(dest="command", required=True)
@@ -49,6 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("verify-channel", help="Verify which YouTube channels you own (Google OAuth, read-only)")
     w = sub.add_parser("web", help="Run the web app (TT_DEV=1 for local development)")
     w.add_argument("--host", default="127.0.0.1"); w.add_argument("--port", type=int, default=8000)
+    w.add_argument("--lan", action="store_true", help="Also open it on your phone/iPad on the same Wi-Fi (dev mode only)")
     sub.add_parser("worker", help="Run web background workers without the web server")
     dg = sub.add_parser("dev-grant", help="LOCAL TESTING ONLY (TT_DEV=1): give an account an active plan without Stripe")
     dg.add_argument("--email", required=True); dg.add_argument("--plan", default="monthly", choices=["daily", "monthly", "yearly"])
@@ -134,6 +168,11 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "web":
             import uvicorn
             from .web.app import create_app
+            if args.lan:
+                args.host = _enable_lan(args.port)
+            elif env("TT_DEV", "0") == "1" and not env("TT_BASE_URL"):
+                import os
+                os.environ["TT_BASE_URL"] = f"http://127.0.0.1:{args.port}"   # dev on another --port just works
             uvicorn.run(create_app(), host=args.host, port=args.port, proxy_headers=True,
                         forwarded_allow_ips=env("TT_TRUSTED_PROXIES", "127.0.0.1"))
         elif args.command == "worker":

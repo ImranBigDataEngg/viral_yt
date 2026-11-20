@@ -91,7 +91,8 @@ def run_link_job(spec: dict, out_dir: Path, verified_channels: set[str] | None =
              "source_video_url": spec.get("source_video_url", spec.get("url", "")), "clip_ranges": "auto",
              "clip_count": spec.get("count", 5), "caption_style": spec.get("caption_style", "bold_pop"),
              "cold_open": spec.get("cold_open", True), "layout": spec.get("layout", "smart"),
-             "detect": spec.get("detect", "auto"), "clip_length": spec.get("clip_length", "auto"),
+             "detect": spec.get("detect", "auto"),
+             "source_title": spec.get("title_hint") or Path(spec.get("upload_name") or "").stem.replace("_", " "), "clip_length": spec.get("clip_length", "auto"),
              "action_weights": spec.get("action_weights") or {}, "progress_bar": spec.get("progress_bar", False),
              "approved": "true", "publish_approved": "false", "tags": spec.get("tags", "")}
     say("transcribing & finding highlights")

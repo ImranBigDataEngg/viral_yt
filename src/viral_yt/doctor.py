@@ -55,6 +55,13 @@ def run_checks() -> list[dict]:
     add("YuNet face model", (ROOT / YUNET).is_file(), str(ROOT / YUNET), "trendtide doctor --fetch-models")
     add("faster-whisper (ASR)", importlib.util.find_spec("faster_whisper"), "optional", "pip install -r requirements-optional.txt")
     add("piper (natural TTS)", importlib.util.find_spec("piper") or shutil.which("piper"), "optional", "py scripts/install.py --ai --voice")
+    try:
+        from .transcripts import asr_device
+        dev, ctype = asr_device()
+        add("Transcription speed", True, f"GPU (NVIDIA CUDA) · {ctype}" if dev == "cuda" else f"CPU · {ctype} (NVIDIA GPU? see docs/MOBILE.md#speed)",
+            "" if dev == "cuda" else "NVIDIA GPU? pip install nvidia-cublas-cu12 nvidia-cudnn-cu12==9.* for 4-8x faster")
+    except Exception:
+        pass
     from . import voicestudio
     if voicestudio.enabled():
         vs = voicestudio.config()["url"]

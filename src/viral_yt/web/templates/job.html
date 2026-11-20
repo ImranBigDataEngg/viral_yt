@@ -23,7 +23,7 @@
 
   <dialog id="postDlg" class="dlg">
     <form method="dialog" class="stack" id="postForm">
-      <h2>Post <span id="postN">0</span> clip(s)</h2>
+      <h2 id="postHead">Publish <span id="postN">0</span> clip(s)</h2>
       {% if accounts %}
       <p class="muted small">Destinations: only accounts you've connected with the platform's own login.</p>
       <div class="dest">
@@ -41,10 +41,20 @@
         </div>
         {% endfor %}
       </div>
-      <label>Caption (used for all selected; title is each clip's own)<textarea id="caption" rows="3" maxlength="2200" placeholder="Leave empty to use each clip's title"></textarea></label>
-      <label class="check small"><input type="checkbox" id="consent"> I confirm these clips can be published to the selected accounts now.</label>
+      <label id="titleRow">Title for YouTube<input id="ptitle" maxlength="100"></label>
+      <label>Caption &amp; hashtags<span class="muted small" id="capHint">AI-written for this clip, edit freely</span>
+        <textarea id="caption" rows="4" maxlength="2200"></textarea></label>
+      <div class="when">
+        <span class="opt-l">When</span>
+        <div class="toggles">
+          <label class="tog"><input type="radio" name="when" value="now" checked><span>🚀 Post now</span></label>
+          <label class="tog"><input type="radio" name="when" value="later"><span>🗓 Schedule</span></label>
+          <input type="datetime-local" id="whenAt" aria-label="Post at (your local time)" hidden>
+        </div>
+      </div>
+      <label class="check small"><input type="checkbox" id="consent"> I confirm these clips can be published to the selected accounts.</label>
       <p class="fine">Public posts need an originality score of 70+. TikTok apps that haven't passed TikTok's audit can only post privately, and YouTube uploads stay private until the API audit is approved.</p>
-      <div class="row-btns"><button class="btn" id="postGo" value="go" type="button">Publish</button><button class="btn ghost" value="cancel">Cancel</button></div>
+      <div class="row-btns"><button class="btn" id="postGo" value="go" type="button">Publish</button><a class="btn ghost" href="/app/calendar">Calendar</a><button class="btn ghost" value="cancel">Cancel</button></div>
       <p class="small" id="postMsg"></p>
       {% else %}
       <p>No connected accounts yet.</p><a class="btn" href="/account#platforms">Connect YouTube, Instagram or TikTok</a>
@@ -66,15 +76,16 @@
   <div class="clips-head"><h2 class="sec-title">{{ outputs|length }} clips · best first</h2></div>
   <div class="clipgrid">
     {% for o in outputs %}
-    <article class="clipcard ratio-{{ o.ratio.replace(':','x') }}" data-oid="{{ o.id }}">
+    <article class="clipcard ratio-{{ o.ratio.replace(':','x') }}" data-oid="{{ o.id }}" data-title="{{ o.title or o.hook }}" data-social='{{ o.social|tojson }}'>
       <div class="vid">
         <video src="/media/{{ o.id }}/mp4" {% if o.has_poster %}poster="/media/{{ o.id }}/poster"{% endif %} controls preload="none" playsinline></video>
         <label class="pick"><input type="checkbox" class="sel" value="{{ o.id }}" aria-label="Select clip"><span></span></label>
+        {% if loop.first and o.scores.overall %}<span class="top-pick">★ Top pick</span>{% endif %}
         <span class="ratio-tag">{{ o.ratio }}{% if o.language %} · {{ o.language|upper }}{% endif %}{% if o.take %} · TAKE{% endif %}</span>
       </div>
       <div class="clip-body">
         <div class="clip-top">
-          {% if o.scores.overall %}<span class="scorepill s{{ (o.scores.overall // 10) * 10 }}" title="Clip score (hook, flow, value)">{{ o.scores.overall }}</span>{% endif %}
+          {% if o.scores.overall %}<span class="viral s{{ (o.scores.overall // 10) * 10 }}" title="Virality score: how likely this clip is to hold viewers and get shared ({{ 'loudness, sudden sounds, motion' if o.scores.action else 'hook, flow, payoff' }})"><b>{{ o.scores.overall }}</b><small>Virality</small></span>{% endif %}
           <div><h3>{{ o.title or o.hook }}</h3><p class="muted small">{{ o.ratio }} · {{ '%.0f'|format(o.duration or 0) }} s{% if o.score is not none %} · originality {{ o.score }}{% endif %}</p></div>
         </div>
         {% if o.scores %}<ul class="minibars">
@@ -85,8 +96,10 @@
           <li>Hook<i class="bar" data-w="{{ o.scores.hook }}"></i><b>{{ o.scores.hook }}</b></li>
           <li>Flow<i class="bar" data-w="{{ o.scores.flow }}"></i><b>{{ o.scores.flow }}</b></li>
           <li>Value<i class="bar" data-w="{{ o.scores.value }}"></i><b>{{ o.scores.value }}</b></li></ul>{% endif %}{% endif %}
+        {% if o.social.hashtags %}<p class="tags small">{{ o.social.hashtags|join(' ') }}</p>{% endif %}
         <div class="row-btns">
-          <a class="btn sm" href="/media/{{ o.id }}/mp4?download=1">⬇ Download</a>
+          <button class="btn sm act-pub" type="button" data-oid="{{ o.id }}">🚀 Publish</button>
+          <a class="btn sm ghost" href="/media/{{ o.id }}/mp4?download=1">⬇ Download</a>
           <a class="btn sm ghost" href="/app/review/{{ o.id }}">✎ Edit</a>
           {% if not o.take %}<button class="btn sm ghost act-take" type="button" data-oid="{{ o.id }}">✦ Make original</button>{% endif %}
         </div>
@@ -106,7 +119,7 @@
     </article>
     {% endfor %}
   </div>
-  <p class="fine">Clip score estimates hook strength, flow and payoff from the transcript. Translated versions use a synthetic voice and are labelled as AI-generated when posted.</p>
+  <p class="fine">The virality score is an estimate, not a promise: for talking clips it rates hook, flow and payoff from the transcript; for gameplay, loudness, sudden sounds and motion. Translated versions use a synthetic voice and are labelled as AI-generated when posted.</p>
 </div>
 {% endif %}
 {% endblock %}

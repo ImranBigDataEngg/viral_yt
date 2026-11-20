@@ -32,9 +32,44 @@
   $("selAll").addEventListener("change", e => { boxes.forEach(b => b.checked = e.target.checked); refresh(); });
   $("zipBtn").addEventListener("click", () => { location.href = "/media/zip?ids=" + encodeURIComponent(selected().join(",")); });
 
-  // post
+  // publish (one clip from its card, or the selection) — now or scheduled
   const dlg = $("postDlg");
-  $("postBtn").addEventListener("click", () => { $("postN").textContent = selected().length; dlg.showModal(); });
+  let pubIds = [];
+  const cardOf = id => document.querySelector(`.clipcard[data-oid="${id}"]`);
+  const socialOf = id => { try { return JSON.parse(cardOf(id).dataset.social || "{}"); } catch (e) { return {}; } };
+  function openPublish(ids) {
+    pubIds = ids;
+    $("postHead").textContent = ids.length === 1 ? "Publish this clip" : `Publish ${ids.length} clips`;
+    const one = ids.length === 1, msg = $("postMsg"); if (msg) { msg.textContent = ""; msg.className = "small"; }
+    if (!$("caption")) { dlg.showModal(); return; }                 // no accounts connected yet
+    $("titleRow").hidden = !one;
+    if (one) {
+      const soc = socialOf(ids[0]);
+      $("ptitle").value = soc.title || cardOf(ids[0]).dataset.title || "";
+      $("caption").value = soc.caption ? `${soc.caption}\n\n${(soc.hashtags || []).join(" ")}`.trim() : "";
+      $("capHint").textContent = "AI-written for this clip, edit freely";
+      $("caption").placeholder = "";
+    } else {
+      $("ptitle").value = ""; $("caption").value = "";
+      $("capHint").textContent = "leave empty to use each clip's own AI caption and hashtags";
+      $("caption").placeholder = "Optional: one caption for all selected clips";
+    }
+    dlg.showModal();
+  }
+  $("postBtn").addEventListener("click", () => openPublish(selected()));
+  document.querySelectorAll(".act-pub").forEach(b => b.addEventListener("click", () => openPublish([b.dataset.oid])));
+  const whenAt = $("whenAt");
+  dlg.querySelectorAll("input[name=when]").forEach(r => r.addEventListener("change", () => {
+    const later = dlg.querySelector("input[name=when]:checked").value === "later";
+    if (!whenAt) return;
+    whenAt.hidden = !later;
+    if (later && !whenAt.value) {                                     // default: tomorrow 6 pm local
+      const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(18, 0, 0, 0);
+      const pad = n => String(n).padStart(2, "0");
+      whenAt.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    $("postGo").textContent = later ? "Schedule" : "Publish";
+  }));
   const go = $("postGo");
   if (go) go.addEventListener("click", async () => {
     const msg = $("postMsg"); msg.className = "small";
@@ -44,10 +79,24 @@
     });
     if (!targets.length) { msg.textContent = "Pick at least one destination."; return; }
     if (!$("consent").checked) { msg.textContent = "Please tick the confirmation box."; return; }
-    go.disabled = true; msg.textContent = "Starting…";
+    const later = dlg.querySelector("input[name=when]:checked").value === "later";
+    let schedule_at = null;
+    if (later) {
+      const t = new Date(whenAt.value).getTime();                     // datetime-local is the user's local time
+      if (!whenAt.value || isNaN(t)) { msg.textContent = "Pick a date and time."; return; }
+      schedule_at = Math.round(t / 1000);
+    }
+    go.disabled = true; msg.textContent = later ? "Scheduling…" : "Starting…";
     try {
-      const {job} = await api("/api/publish", {output_ids: selected(), targets, caption: $("caption").value, consent: true});
-      await waitJob(job, msg, "Done. Status shows on each clip.");
+      const r = await api("/api/publish", {output_ids: pubIds, targets, caption: $("caption").value,
+        title: pubIds.length === 1 ? $("ptitle").value : "", consent: true, schedule_at});
+      if (r.scheduled) {
+        msg.innerHTML = "";
+        msg.append(`Scheduled for ${new Date(r.at * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"})}. `);
+        const a = document.createElement("a"); a.href = "/app/calendar"; a.textContent = "Open calendar →"; msg.append(a);
+      } else {
+        await waitJob(r.job, msg, "Done. Status shows on each clip.");
+      }
     } catch (e) { msg.textContent = e.message; msg.classList.add("danger"); }
     go.disabled = false;
   });

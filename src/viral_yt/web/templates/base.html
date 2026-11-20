@@ -6,6 +6,10 @@
 <meta name="description" content="{{ brand }} turns your long videos and live streams into scored, captioned, perfectly framed Shorts, Reels and TikToks, then posts them for you.">
 <meta name="theme-color" content="#000000">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="EzzyClips"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/app.js" defer></script>
 {% block head %}{% endblock %}
@@ -28,11 +32,12 @@
     <a href="/#pricing">Pricing</a>
     {% endif %}
   </nav>
-  <div class="nav-actions">
+  <div class="nav-actions{% if user %} app-tabs{% endif %}">
     {% if user %}
-      <a href="/app" class="{{ 'on' if path.startswith('/app') }}">Projects</a>
-      <a href="/billing" class="{{ 'on' if path.startswith('/billing') }}">Billing</a>
-      <a href="/account" class="{{ 'on' if path.startswith('/account') }}">Account</a>
+      <a href="/app" class="{{ 'on' if path.startswith('/app') and not path.startswith('/app/calendar') }}"><i aria-hidden="true">🎬</i>Projects</a>
+      <a href="/app/calendar" class="{{ 'on' if path.startswith('/app/calendar') }}"><i aria-hidden="true">🗓</i>Calendar</a>
+      <a href="/billing" class="{{ 'on' if path.startswith('/billing') }}"><i aria-hidden="true">💳</i>Billing</a>
+      <a href="/account" class="{{ 'on' if path.startswith('/account') }}"><i aria-hidden="true">👤</i>Account</a>
       <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">Log out</button></form>
     {% else %}
       <a href="/login">Sign in</a><a class="btn white sm" href="/signup">Sign up</a>

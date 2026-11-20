@@ -373,6 +373,44 @@ class EnergyFallbackTests(unittest.TestCase):
         self.assertEqual(energy_windows({0: -20.0}, 10), [])
 
 
+class SocialCopyTests(unittest.TestCase):
+    def test_heuristic_copy_is_specific_and_capped(self):
+        from viral_yt.social_copy import generate
+        g = generate({"title": "", "hook_text": "Wait for it…", "transcript": "", "detect": "action",
+                      "source_title": "GTA 6 Vice City police chase gameplay"})
+        self.assertIn("#gta6", g["hashtags"])
+        self.assertLessEqual(len(g["hashtags"]), 5)
+        self.assertTrue(g["title"].startswith("GTA 6"))
+        self.assertIn("#shorts", g["platforms"]["youtube"]["description"])
+        self.assertNotIn("#fyp", " ".join(g["hashtags"]))
+
+    def test_llm_copy_is_sanitised_and_falls_back(self):
+        from viral_yt import social_copy
+        meta = {"title": "Budget tip", "transcript": "Plan every dollar before the month starts.", "category": "finance"}
+        with mock.patch.object(social_copy, "settings", return_value={"llm": {"engine": "openai"}}), \
+             mock.patch("viral_yt.llm.complete", return_value='{"title":"T","caption":"C","hashtags":["#FYP","Money Tips","#x"]}'):
+            g = social_copy.generate(meta)
+        self.assertEqual((g["engine"], g["hashtags"]), ("llm", ["#moneytips"]))
+        with mock.patch.object(social_copy, "settings", return_value={"llm": {"engine": "openai"}}), \
+             mock.patch("viral_yt.llm.complete", side_effect=OSError("offline")):
+            self.assertEqual(social_copy.generate(meta)["engine"], "heuristic")
+
+
+class LanModeTests(unittest.TestCase):
+    def test_lan_requires_dev_and_sets_trusted_origins(self):
+        from viral_yt import cli
+        with mock.patch.dict(os.environ, {"TT_DEV": "0"}):
+            with self.assertRaises(SystemExit):
+                cli._enable_lan(8000)
+        with mock.patch.dict(os.environ, {"TT_DEV": "1", "TT_ALLOWED_HOSTS": "127.0.0.1,localhost"}), \
+             mock.patch.object(cli, "_lan_ip", return_value="192.168.1.23"):
+            host = cli._enable_lan(8000)
+            self.assertEqual(host, "0.0.0.0")
+            self.assertEqual(os.environ["TT_BASE_URL"], "http://192.168.1.23:8000")
+            self.assertIn("192.168.1.23", os.environ["TT_ALLOWED_HOSTS"].split(","))
+            self.assertIn("http://127.0.0.1:8000", os.environ["TT_EXTRA_ORIGINS"])
+
+
 class GameplayModeTests(unittest.TestCase):
     """Action detector + streamer layouts on a synthetic 'gameplay' video (still / burst / still)."""
 

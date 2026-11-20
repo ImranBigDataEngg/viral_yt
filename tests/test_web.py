@@ -358,7 +358,7 @@ class TestWeb(unittest.TestCase):
                 return t
 
             def publish(self, t, account_id, video, meta):
-                FakeYT.calls.append((account_id, video.name, meta["privacy"]))
+                FakeYT.calls.append((account_id, video.name, meta["privacy"], meta["title"], meta["description"]))
                 return {"remote_id": "V1", "url": "https://www.youtube.com/shorts/V1", "status": meta["privacy"]}
         publishing._registry["youtube"] = FakeYT
         uid = self._uid("creator@example.com")
@@ -372,7 +372,43 @@ class TestWeb(unittest.TestCase):
         self.assertEqual(st, 200, r)
         self._wait(c, json.loads(r)["job"])
         self.assertEqual(FakeYT.calls[-1][0], "UCtest")
-        self.assertIn(b"youtube.com/shorts/V1", c.get(f"/app/jobs/{jid}")[2])
+        page_html = c.get(f"/app/jobs/{jid}")[2]
+        self.assertIn(b"youtube.com/shorts/V1", page_html)
+        self.assertIn(b"Virality", page_html)
+        self.assertIn(b"act-pub", page_html)                          # Publish button on every clip
+        # no caption typed -> the clip's AI social copy (with hashtags) is used; a typed title wins
+        body2 = {"output_ids": [oid], "targets": [{"account": acc_id, "privacy": "unlisted"}], "consent": True,
+                 "title": "My own title"}
+        st, _, r = c.req("POST", "/api/publish", json.dumps(body2).encode(), hdr)
+        self._wait(c, json.loads(r)["job"])
+        self.assertEqual(FakeYT.calls[-1][3], "My own title")
+        self.assertIn("#", FakeYT.calls[-1][4])
+        self.assertIn("#shorts", FakeYT.calls[-1][4])
+        # scheduling: rejected in the past, queued for later, shown on the calendar, cancellable once, owner only
+        st, _, r = c.req("POST", "/api/publish", json.dumps({**body2, "schedule_at": time.time() - 10}).encode(), hdr)
+        self.assertEqual(st, 400)
+        n_calls = len(FakeYT.calls)
+        when = time.time() + 3600
+        st, _, r = c.req("POST", "/api/publish", json.dumps({**body2, "schedule_at": when}).encode(), hdr)
+        self.assertEqual(st, 200, r)
+        sj = json.loads(r)
+        self.assertTrue(sj["scheduled"])
+        row = self.app.state.db.one("SELECT status, not_before FROM jobs WHERE id=?", (sj["job"],))
+        self.assertEqual((row["status"], round(row["not_before"])), ("queued", round(when)))
+        time.sleep(1.5)
+        self.assertEqual(len(FakeYT.calls), n_calls)                  # not posted early
+        cal = c.get("/app/calendar")[2].decode()
+        self.assertIn(sj["job"], cal)
+        other = self._user("calthief@example.com")
+        ot = re.search(rb'name="csrf" value="([^"]+)"', other.get("/app")[2]).group(1).decode()
+        st, _, _ = other.req("POST", f"/api/calendar/{sj['job']}/cancel", b"{}", {"Content-Type": "application/json", "X-CSRF-Token": ot})
+        self.assertEqual(st, 409)
+        self.assertNotIn(sj["job"], other.get("/app/calendar")[2].decode())
+        st, _, _ = c.req("POST", f"/api/calendar/{sj['job']}/cancel", b"{}", hdr)
+        self.assertEqual(st, 200)
+        st, _, _ = c.req("POST", f"/api/calendar/{sj['job']}/cancel", b"{}", hdr)
+        self.assertEqual(st, 409)
+        self.assertEqual(self.app.state.db.one("SELECT status FROM jobs WHERE id=?", (sj["job"],))["status"], "cancelled")
         # public posting is gated on originality
         from viral_yt.common import ROOT
         cfgp = ROOT / "config" / "settings.json"

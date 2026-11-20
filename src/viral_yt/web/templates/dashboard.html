@@ -40,7 +40,7 @@
         {% for r in ratios %}<label class="tog"><input type="checkbox" name="ratios" value="{{ r }}" {% if r == '9:16' %}checked{% endif %}><span><b>{{ r }}</b> {{ {'9:16':'Shorts · Reels · TikTok','1:1':'Feed','16:9':'Landscape'}[r] }}</span></label>{% endfor %}
         </div></div>
       <div class="opt"><span class="opt-l">Clips</span>
-        <div class="toggles">{% for n in (3,5,8,10) %}<label class="tog"><input type="radio" name="count" value="{{ n }}" {% if n == 5 %}checked{% endif %}><span>{{ n }}</span></label>{% endfor %}</div></div>
+        <div class="toggles">{% for n in (3,5,10,15,20,30) %}<label class="tog"><input type="radio" name="count" value="{{ n }}" {% if n == 5 %}checked{% endif %}><span>{{ n }}</span></label>{% endfor %}</div></div>
       <div class="opt"><span class="opt-l">Captions</span>
         <div class="toggles">{% for s in styles %}<label class="tog cap-{{ s }}"><input type="radio" name="caption_style" value="{{ s }}" {% if loop.first %}checked{% endif %}><span>{{ s.replace('_',' ').title() }}</span></label>{% endfor %}</div></div>
       <div class="opt"><span class="opt-l">Extras</span>

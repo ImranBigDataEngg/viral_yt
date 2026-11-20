@@ -145,6 +145,34 @@ active-speaker framing, 9:16/1:1/16:9 exports, browser review editor, and a web 
   Shorts for discovery → **one 6–10 min long-form explainer per week** (watch hours) → Tier-1 features (memberships,
   Shopping/affiliate links with disclosure) → brand deals. No income is guaranteed.
 
+## 8b. Phase V — Vizard parity (added 20 Nov 2026)
+
+Reviewed vizard.ai and independent reviews. Core loop: upload or link → many AI clips in minutes, each with a
+**virality score** → AI title, description and hashtags → **Publish / Schedule per clip** to TikTok, YouTube, Instagram
+(also X, Facebook, LinkedIn) → **content calendar**. Also: text-based editing, AI emoji and keyword highlights,
+caption translation, brand templates, AI B-roll, team workspace, mobile app.
+
+**V1 — build now** (core create → score → publish loop, on any device)
+| # | Feature | How |
+|---|---|---|
+| V1.1 | Virality score front and centre | 0–99 badge on every clip, clips sorted best-first, "Top pick" tag, up to 30 clips per video |
+| V1.2 | AI social copy per clip | Title, description and hashtags written per platform at render time (LLM if configured, keyword heuristic otherwise); editable before posting |
+| V1.3 | Publish button on every clip | One-clip dialog prefilled with that clip's AI copy; pick accounts; **Post now** or **Schedule** |
+| V1.4 | Scheduler + content calendar | Scheduled posts are queued jobs with a run time; `/app/calendar` month view of scheduled, posted and failed posts; cancel before it runs |
+| V1.5 | Works on phone and iPad | `trendtide web --lan` (same Wi-Fi), Tailscale guide for anywhere, installable PWA (home-screen icon), responsive layout |
+| V1.6 | Minutes, not hours | Gameplay mode (no ASR); **GPU Whisper** auto-detected on NVIDIA (GTX 1650: int8_float16) with CPU fallback; YouTube captions reused |
+
+**V2 — next**
+- Text-based editing (delete words in the transcript to cut).
+- AI emoji and keyword-highlight captions.
+- Brand template (logo, colours, font, outro).
+- B-roll from a licensed stock API (Pexels).
+- Bulk scheduling with queue slots, and post analytics.
+- X / Facebook / LinkedIn destinations.
+- Team workspace with share links.
+
+**Will not copy:** reposting other people's videos. The rights gate stays; Vizard's own terms require rights too.
+
 ## 8. Roadmap
 
 - **Week 1:** create channel & brand kit; Google Cloud project, API key, OAuth client; **submit API audit**; run demo;

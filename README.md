@@ -53,6 +53,13 @@ resumable cache. `trendtide doctor` checks everything.
 - **Browser review editor:** trim handles, caption text and timing edits, hook, style and cold open, then the final render.
 - **Professional web app** with Stripe subscriptions ($2/day, $25/month, $250/year) and a hardened security model.
 
+### Vizard-style create → score → publish (Phase V1, see IMPLEMENTATION_PLAN.md §8b)
+- Up to **30 clips** per video, each with a **0–99 virality score**, sorted best-first with a ★ Top pick.
+- **AI title, caption and hashtags** for every clip (your LLM if configured, otherwise a keyword heuristic).
+- **🚀 Publish on every clip:** post now or **schedule**. The **Content calendar** (`/app/calendar`) shows and cancels scheduled posts.
+- **Phone / iPad:** `trendtide web --lan`, or Tailscale from anywhere. Install to the home screen; phones get a bottom tab bar. See [docs/MOBILE.md](docs/MOBILE.md).
+- **Faster:** NVIDIA GPU transcription is used automatically when the CUDA libraries are installed, with CPU fallback.
+
 ### Gameplay mode (no transcription) → [docs/CLIPIT_COMPARISON.md](docs/CLIPIT_COMPARISON.md)
 - 🎮 **Gameplay** finds moments from loudness, sudden sounds, motion and scene cuts in seconds. Tune it with the Advanced sliders and pick 30/45/60 s clips.
 - Layouts: Smart, **Facecam split**, Blur fill, Crop, Fit. Extras: progress bar.

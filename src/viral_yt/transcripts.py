@@ -83,20 +83,69 @@ def select_highlight(cues: list[Cue], max_seconds: int = 50) -> tuple[float, flo
     return h["start"], h["end"], h["text"]
 
 
-def transcribe_owned_file(media: Path, output_srt: Path, model_size: str = "small", words_json: bool = True) -> Path:
+def _cuda_dll_dirs() -> None:
+    """Windows: make pip-installed CUDA libraries (nvidia-cublas-cu12, nvidia-cudnn-cu12) visible to CTranslate2."""
     import os
-    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")   # harmless on Windows without Developer Mode
-    try:
-        from faster_whisper import WhisperModel
-    except ImportError as exc:
-        raise RuntimeError("Install optional requirements: pip install -r requirements-optional.txt") from exc
-    model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    import sys
+    if os.name != "nt":
+        return
+    for base in map(Path, sys.path):
+        nv = base / "nvidia"
+        if nv.is_dir():
+            for b in nv.glob("*/bin"):
+                try:
+                    os.add_dll_directory(str(b))
+                except OSError:
+                    pass
+                os.environ["PATH"] = str(b) + os.pathsep + os.environ.get("PATH", "")
+
+
+def asr_device() -> tuple[str, str]:
+    """(device, compute_type). settings.asr.device / TT_ASR_DEVICE: auto | cuda | cpu.
+    auto = NVIDIA GPU if CTranslate2 sees one (GTX 1650 etc: int8_float16, ~4-8x faster than CPU), else CPU int8."""
+    from .common import env, settings
+    want = (env("TT_ASR_DEVICE") or settings().get("asr", {}).get("device", "auto")).lower()
+    if want != "cpu":
+        try:
+            _cuda_dll_dirs()
+            import ctranslate2
+            if ctranslate2.get_cuda_device_count() > 0:
+                return "cuda", settings().get("asr", {}).get("cuda_compute_type", "int8_float16")
+        except Exception:
+            pass
+    return "cpu", "int8"
+
+
+def _run_whisper(model_size: str, device: str, ctype: str, media: Path):
+    from faster_whisper import WhisperModel
+    model = WhisperModel(model_size, device=device, compute_type=ctype)
     segments, _ = model.transcribe(str(media), beam_size=5, word_timestamps=True, vad_filter=True)
     cues, words = [], []
-    for seg in segments:
+    for seg in segments:                      # segments is lazy: GPU library errors surface here
         cues.append((seg.start, seg.end, seg.text.strip()))
         for w in seg.words or []:
             words.append([round(w.start, 3), round(w.end, 3), w.word.strip()])
+    return cues, words
+
+
+def transcribe_owned_file(media: Path, output_srt: Path, model_size: str | None = None, words_json: bool = True) -> Path:
+    import os
+    from .common import get_logger, settings
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")   # harmless on Windows without Developer Mode
+    try:
+        import faster_whisper  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError("Install optional requirements: pip install -r requirements-optional.txt") from exc
+    model_size = model_size or settings().get("asr", {}).get("model", "small")
+    device, ctype = asr_device()
+    try:
+        cues, words = _run_whisper(model_size, device, ctype, media)
+    except (RuntimeError, OSError, ValueError) as exc:
+        if device == "cpu":
+            raise
+        get_logger("asr").warning("GPU transcription failed (%s); falling back to CPU. Fix: "
+                                  "pip install nvidia-cublas-cu12 nvidia-cudnn-cu12==9.* (see docs/MOBILE.md#speed)", exc)
+        cues, words = _run_whisper(model_size, "cpu", "int8", media)
     write_srt(cues, output_srt)
     if words_json:
         output_srt.with_suffix(".words.json").write_text(json.dumps(words), encoding="utf-8")

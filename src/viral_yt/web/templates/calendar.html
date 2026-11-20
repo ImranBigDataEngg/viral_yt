@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Content calendar · {{ brand }}{% endblock %}
+{% block head %}<script src="/static/calendar.js" defer></script>{% endblock %}
+{% block main %}
+<section class="stack" id="calapp" data-csrf="{{ csrf }}">
+  <div class="cal-head">
+    <h1>Content calendar</h1>
+    <button class="btn sm ghost" id="prevM" type="button" aria-label="Previous month">‹</button>
+    <b id="monthLbl"></b>
+    <button class="btn sm ghost" id="nextM" type="button" aria-label="Next month">›</button>
+    <button class="btn sm ghost" id="todayBtn" type="button">Today</button>
+  </div>
+  <div class="legend"><span><i class="lg-s"></i>Scheduled</span><span><i class="lg-r"></i>Posting</span>
+    <span><i class="lg-d"></i>Posted</span><span><i class="lg-f"></i>Failed</span></div>
+  <div class="cal" id="cal"></div>
+  <div class="agenda" id="agenda"></div>
+  <div class="cal-detail" id="detail" hidden></div>
+  {% if not items %}<p class="muted">Nothing scheduled yet. Open a project and press <b>🚀 Publish</b> → <b>Schedule</b> on any clip.</p>{% endif %}
+  <p class="fine">Times are shown in your device's time zone. Scheduled posts run on the computer or server hosting EzzyClips, so keep it on at the scheduled time.</p>
+</section>
+<script type="application/json" id="calData">{{ items|tojson }}</script>
+{% endblock %}

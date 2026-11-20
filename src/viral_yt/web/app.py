@@ -8,6 +8,7 @@ signed webhooks as the only source of entitlements.
 from __future__ import annotations
 
 import json
+import mimetypes
 import secrets
 import shutil
 import time
@@ -63,10 +64,15 @@ class SecurityHeaders:
         await self.app(scope, receive, _send)
 
 
+mimetypes.add_type("application/manifest+json", ".webmanifest")   # PWA manifest (Windows lacks this mapping)
+
+
 def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Starlette:
     cfg = cfg or load()
     db = DB(cfg.data_dir / "web.db")
     origin = "{0.scheme}://{0.netloc}".format(urllib.parse.urlsplit(cfg.base_url))
+    # extra trusted origins (e.g. --lan: the laptop's own 127.0.0.1 address next to the Wi-Fi address)
+    origins = {None, origin} | {o.strip().rstrip("/") for o in env("TT_EXTRA_ORIGINS", "").split(",") if o.strip()}
 
     # ---------------------------------------------------------------- helpers
     def client_ip(req: Request) -> str:
@@ -91,7 +97,7 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         return templates.TemplateResponse(req, name, {**base, **(ctx or {})}, status_code=status)
 
     async def form_checked(req: Request, session: dict) -> dict:
-        if req.headers.get("origin") not in (None, origin):
+        if req.headers.get("origin") not in origins:
             raise HTTPException(403, "Bad origin")
         form = await req.form(max_files=0, max_fields=40)
         if not security.csrf_ok(session, form.get("csrf")):
@@ -99,7 +105,7 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         return form
 
     def api_checked(req: Request, session: dict) -> None:
-        if req.headers.get("origin") not in (None, origin) or not security.csrf_ok(session, req.headers.get("x-csrf-token")):
+        if req.headers.get("origin") not in origins or not security.csrf_ok(session, req.headers.get("x-csrf-token")):
             raise HTTPException(403, "CSRF check failed")
 
     def set_session_cookie(resp: Response, token: str) -> None:
@@ -243,7 +249,7 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
 
     async def create_job(req: Request):
         s, u = require_user(req)
-        if req.headers.get("origin") not in (None, origin):
+        if req.headers.get("origin") not in origins:
             raise HTTPException(403, "Bad origin")
         ent = billing.entitlement(db, u["id"])
         if not ent:
@@ -270,7 +276,7 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         ratios = [r for r in form.getlist("ratios") if r in RATIOS] or ["9:16"]
         style = form.get("caption_style") if form.get("caption_style") in STYLES else "bold_pop"
         try:
-            count = max(1, min(10, int(form.get("count") or 5)))
+            count = max(1, min(30, int(form.get("count") or 5)))
         except ValueError:
             count = 5
         basis = form.get("rights_basis") or ""
@@ -354,8 +360,9 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
                 o["hook"], o["score"] = meta.get("hook_text", ""), meta.get("originality_score")
                 o["scores"] = meta.get("scores") or {}
                 o["has_poster"] = bool(meta.get("poster"))
+                o["social"] = meta.get("social") or {}
             except (OSError, ValueError):
-                o["hook"], o["score"], o["scores"], o["has_poster"] = "", None, {}, False
+                o["hook"], o["score"], o["scores"], o["has_poster"], o["social"] = "", None, {}, False, {}
         for o in outs:
             try:
                 m = json.loads(Path(o["meta_file"]).read_text(encoding="utf-8"))
@@ -560,7 +567,38 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
             spec = validate_request(db, u["id"], await req.json())
         except ValueError as exc:
             raise HTTPException(400, str(exc))
-        return JSONResponse({"job": enqueue(db, u["id"], "publish", spec)})
+        jid = enqueue(db, u["id"], "publish", spec)
+        if spec.get("schedule_at"):
+            db.run("UPDATE jobs SET not_before=?, progress='scheduled' WHERE id=?", (spec["schedule_at"], jid))
+        return JSONResponse({"job": jid, "scheduled": bool(spec.get("schedule_at")), "at": spec.get("schedule_at")})
+
+    # ---------------------------------------------------------------- content calendar
+    async def calendar(req: Request):
+        s, u = require_user(req)
+        rows = db.all("SELECT id, status, progress, spec, created, not_before, error FROM jobs WHERE user_id=? AND "
+                      "kind='publish' ORDER BY COALESCE(NULLIF(not_before,0), created) DESC LIMIT 500", (u["id"],))
+        titles = {o["id"]: o["title"] for o in db.all("SELECT id, title FROM outputs WHERE user_id=?", (u["id"],))}
+        items = []
+        for r in rows:
+            sp = json.loads(r["spec"])
+            posts = db.all("SELECT platform, handle, status, url, error FROM posts WHERE user_id=? AND job_id=?",
+                           (u["id"], r["id"]))
+            items.append({"id": r["id"], "at": r["not_before"] or r["created"], "status": r["status"],
+                          "scheduled": bool(sp.get("schedule_at")),
+                          "clips": [{"id": i, "title": titles.get(i, "(deleted clip)")} for i in sp.get("output_ids", [])],
+                          "platforms": sorted({t["platform"] for t in sp.get("targets", [])}),
+                          "posts": posts, "error": r["error"]})
+        return page(req, "calendar.html", {"items": items})
+
+    async def api_calendar_cancel(req: Request):
+        s, u = require_user(req)
+        api_checked(req, s)
+        with db.tx() as c:
+            n = c.execute("UPDATE jobs SET status='cancelled', progress='cancelled', updated=? WHERE id=? AND user_id=? "
+                          "AND kind='publish' AND status='queued'", (time.time(), req.path_params["jid"], u["id"])).rowcount
+        if not n:
+            raise HTTPException(409, "This post already started or isn't scheduled")
+        return JSONResponse({"ok": True})
 
     async def api_transform(req: Request):
         s, u = require_user(req)
@@ -785,7 +823,8 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         Route("/logout", logout, methods=["POST"]),
         Route("/app", dashboard), Route("/app/jobs", create_job, methods=["POST"]),
         Route("/app/jobs/{jid:str}", job_page), Route("/app/jobs/{jid:str}/delete", delete_job, methods=["POST"]),
-        Route("/app/review/{oid:str}", review),
+        Route("/app/review/{oid:str}", review), Route("/app/calendar", calendar),
+        Route("/api/calendar/{jid:str}/cancel", api_calendar_cancel, methods=["POST"]),
         Route("/api/jobs/{jid:str}", api_job), Route("/api/outputs/{oid:str}", api_output),
         Route("/api/outputs/{oid:str}/preview", api_preview, methods=["POST"]),
         Route("/api/outputs/{oid:str}/render", api_render, methods=["POST"]),
