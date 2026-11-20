@@ -139,10 +139,24 @@ def youtube_rights(info: dict, verified_channel_ids: set[str]) -> tuple[str, str
                       "Connect the channel that owns it, or upload the file with the creator's written permission.")
 
 
+def _ytdlp_reason(msg: str) -> str:
+    low = msg.lower()
+    if "429" in low or "too many requests" in low:
+        return "YouTube is rate-limiting downloads from your network right now. Wait 15-30 minutes and try again."
+    if "sign in to confirm" in low or "not a bot" in low:
+        return "YouTube asked for a bot check on your network. Wait a while, or download the video from your own channel and upload the file."
+    if "private" in low or "unavailable" in low or "removed" in low:
+        return "This video is private, removed or unavailable."
+    if "age" in low and "restrict" in low:
+        return "Age-restricted videos can't be fetched by link; upload the file instead."
+    return "Couldn't download the video: " + msg.replace("ERROR: ", "")[:200]
+
+
 def download_youtube(video_id: str, dest: Path, max_seconds: int, with_subs: bool = True) -> tuple[Path, Path | None]:
     """Download an AUTHORIZED video (after youtube_rights passed) with yt-dlp; no cookies are ever used."""
     try:
         import yt_dlp
+        from yt_dlp.utils import DownloadError
     except ImportError as exc:
         raise IngestError("Link mode needs yt-dlp: pip install yt-dlp") from exc
     dest.mkdir(parents=True, exist_ok=True)
@@ -151,13 +165,31 @@ def download_youtube(video_id: str, dest: Path, max_seconds: int, with_subs: boo
         d = info.get("duration") or 0
         return f"longer than the {max_seconds // 60}-minute limit" if d and d > max_seconds else None
 
-    opts = {"format": "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/b[height<=1080]/b",
-            "merge_output_format": "mp4", "outtmpl": str(dest / "source.%(ext)s"), "noplaylist": True,
-            "quiet": True, "no_warnings": True, "restrictfilenames": True, "match_filter": too_long,
-            "writesubtitles": with_subs, "writeautomaticsub": with_subs, "subtitleslangs": ["en", "en-orig", "en.*"],
-            "subtitlesformat": "vtt", "max_filesize": 6 * 1024 ** 3, "retries": 3}
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
+    def opts(subs: bool) -> dict:
+        return {"format": "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/b[height<=1080]/b",
+                "merge_output_format": "mp4", "outtmpl": str(dest / "source.%(ext)s"), "noplaylist": True,
+                "quiet": True, "no_warnings": True, "restrictfilenames": True, "match_filter": too_long,
+                # only the original English track(s): "en.*" also fetched every auto-translation -> HTTP 429
+                "writesubtitles": subs, "writeautomaticsub": subs, "subtitleslangs": ["en", "en-orig"],
+                "subtitlesformat": "vtt", "max_filesize": 6 * 1024 ** 3, "retries": 3, "sleep_interval_subtitles": 1}
+
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    try:
+        with yt_dlp.YoutubeDL(opts(with_subs)) as ydl:
+            ydl.download([url])
+    except DownloadError as exc:
+        msg = str(exc)
+        if with_subs and "subtitle" in msg.lower():
+            # captions are only a speed-up (they let us skip ASR); YouTube rate-limits them often -> go without
+            for p in dest.glob("source*.vtt*"):
+                p.unlink(missing_ok=True)
+            try:
+                with yt_dlp.YoutubeDL(opts(False)) as ydl:
+                    ydl.download([url])
+            except DownloadError as exc2:
+                raise IngestError(_ytdlp_reason(str(exc2))) from exc2
+        else:
+            raise IngestError(_ytdlp_reason(msg)) from exc
     vids = [p for p in dest.glob("source.*") if p.suffix.lower() in VIDEO_EXT]
     if not vids:
         raise IngestError("Download failed or the video exceeded the length limit")
