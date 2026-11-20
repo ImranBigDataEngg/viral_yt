@@ -5,6 +5,9 @@ from pathlib import Path
 from .common import ROOT, local_file, read_csv
 
 APPROVED_LICENSES = {"original", "licensed", "public_domain", "cc_by"}
+# House rule (EzzyClips Ultra playbook, not a YouTube number): your own narration or
+# graphics must cover at least half of any Short built on third-party footage.
+MIN_COMMENTARY_SHARE = 0.5
 DEFAULT_LEDGER = ROOT / "media" / "authorized" / "assets.csv"
 
 
@@ -49,8 +52,27 @@ def validate_asset(asset: dict, require_publish: bool = False) -> tuple[Path, fl
         raise RightsError("Clip boundaries must be numeric seconds") from exc
     if not (0 <= start < end and 6 <= end - start <= 180):
         raise RightsError("Clip must last 6..180 seconds with nonnegative start and end > start")
+    series_key = (asset.get("series") or "").strip()
+    if series_key:
+        from .series import get_series
+        try:
+            get_series(series_key)
+        except ValueError as exc:
+            raise RightsError(str(exc)) from exc
     for media_key in ("transcript_file", "commentary_audio"):
         value = (asset.get(media_key) or "").strip()
         if value and not local_file(value).is_file():
             raise RightsError(f"{media_key} missing: {local_file(value)}")
     return path, start, end
+
+
+def check_originality(asset: dict, clip_seconds: float, commentary_seconds: float) -> None:
+    """Gate against bare re-uploads, which YouTube down-ranks in Shorts since Oct 1, 2026."""
+    if (asset.get("rights_basis") or "").strip().lower() == "original":
+        return
+    share = commentary_seconds / max(clip_seconds, 0.001)
+    if share < MIN_COMMENTARY_SHARE:
+        raise RightsError(
+            f"Commentary covers {share:.0%} of the Short; needs at least {MIN_COMMENTARY_SHARE:.0%}. "
+            "Add more breakdown narration or trim the borrowed footage."
+        )

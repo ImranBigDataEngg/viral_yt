@@ -22,6 +22,11 @@ This is a usable starter application, not a completed YouTube channel. It discov
 | Public upload with extra authorization | Implemented: requires `--execute --publish` + `publish_approved=true` |
 | Instagram / TikTok API auto-posting | **Not** implemented; manual-ready assets provided |
 | Automated viral clips of other creators without rights | Deliberately **not supported** |
+| EzzyClips Ultra series (5 formats), titles, hooks, hashtags, credit line | Implemented (`series.py`, `script` command) |
+| Originality gate: own narration covers >= 50% of third-party clips | Implemented (`render` refuses otherwise) |
+| 2-3 word mobile captions, 20-40 s length check | Implemented |
+| Synthetic-media disclosure, English metadata, daily upload cap | Implemented (`synthetic_media`, `DAILY_UPLOAD_CAP`) |
+| Channel SEO: description, keywords, series playlists | Implemented (`channel-setup`, dry-run by default) |
 
 ## Windows quick start (target `D:\auto_viral_YT`)
 
@@ -60,6 +65,19 @@ In Google Cloud, enable **YouTube Data API v3** and create an **OAuth desktop ap
 # Public upload (requires publish_approved=true in ledger):
 .\.venv\Scripts\python.exe -m viral_yt.cli upload --asset-id my_original_gaming_001 --execute --publish
 ```
+
+### EzzyClips Ultra channel setup and scripts
+
+```powershell
+# Preview the channel description, keywords and playlists (no changes):
+.\.venv\Scripts\python.exe -m viral_yt.cli channel-setup
+# Apply them (OAuth with the full youtube scope, stored in .secrets\token_manage.json):
+.\.venv\Scripts\python.exe -m viral_yt.cli channel-setup --execute --business-email you@example.com
+# Print a second-by-second script scaffold for an asset (needs series + subject columns):
+.\.venv\Scripts\python.exe -m viral_yt.cli script --asset-id mirror_shot_001
+```
+
+See `docs/CHANNEL_KIT.md` for why originality now decides Shorts reach.
 
 **Creation of the YouTube channel itself requires your Google/YouTube session** at https://www.youtube.com/create_channel (or YouTube UI). Choose a handle and check availability. Use the banner/profile design brief under `docs/CHANNEL_KIT.md`.
 

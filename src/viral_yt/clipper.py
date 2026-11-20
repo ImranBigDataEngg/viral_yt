@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .common import ROOT, local_file, safe_name
-from .rights import load_asset, validate_asset
+from .rights import check_originality, load_asset, validate_asset
 from .transcripts import parse_srt, seconds_to_srt
 
 
@@ -28,6 +28,21 @@ def probe_duration(media: Path) -> float:
     return float(result.stdout.strip())
 
 
+def chunk_cues(cues: list[tuple[float, float, str]], max_words: int = 3) -> list[tuple[float, float, str]]:
+    """Split caption cues into 2-4 word chunks for big, mobile-readable burned-in captions."""
+    chunked = []
+    for begin, end, text in cues:
+        words = text.split()
+        if len(words) <= max_words:
+            chunked.append((begin, end, text))
+            continue
+        groups = [words[i:i + max_words] for i in range(0, len(words), max_words)]
+        step = (end - begin) / len(groups)
+        for n, group in enumerate(groups):
+            chunked.append((begin + n * step, begin + (n + 1) * step, " ".join(group)))
+    return chunked
+
+
 def slice_srt(source: Path, clip_start: float, clip_end: float, target: Path) -> bool:
     cues = parse_srt(source.read_text(encoding="utf-8-sig"))
     selected = []
@@ -37,6 +52,7 @@ def slice_srt(source: Path, clip_start: float, clip_end: float, target: Path) ->
             selected.append((clipped_begin - clip_start, clipped_end - clip_start, text))
     if not selected:
         return False
+    selected = chunk_cues(selected)
     with target.open("w", encoding="utf-8") as out:
         for i, (begin, end, text) in enumerate(selected, 1):
             out.write(f"{i}\n{seconds_to_srt(begin)} --> {seconds_to_srt(end)}\n{text}\n\n")
@@ -63,14 +79,19 @@ def render(asset_id: str, preset: str = "medium") -> Path:
     output.mkdir(parents=True, exist_ok=True)
     output_file = output / f"{safe_name(asset_id)}.mp4"
     seconds = end - start
+    commentary = (asset.get("commentary_audio") or "").strip()
+    commentary_seconds = probe_duration(local_file(commentary)) if commentary else 0.0
+    check_originality(asset, seconds, min(commentary_seconds, seconds))
+    warnings = []
+    if not 20 <= seconds <= 40:
+        warnings.append(f"Short is {seconds:.0f}s; 20-40s loops best.")
     video_filter = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30"
     captions_source = (asset.get("transcript_file") or "").strip()
     caption_file = output / f"{safe_name(asset_id)}.srt"
     has_captions = captions_source and slice_srt(local_file(captions_source), start, end, caption_file)
     if has_captions:
-        # Font sizes are relative in ASS; hardcoded captions remain readable on mobile.
-        video_filter += f",subtitles=filename='{ffmpeg_filter_path(caption_file)}':force_style='Fontname=Arial,Fontsize=18,Alignment=2,MarginV=125,Outline=2,Shadow=1'"
-    commentary = (asset.get("commentary_audio") or "").strip()
+        # Large, bold, high-contrast captions sit above the bottom ~20% where YouTube's UI overlays.
+        video_filter += f",subtitles=filename='{ffmpeg_filter_path(caption_file)}':force_style='Fontname=Arial,Fontsize=24,Bold=1,Alignment=2,MarginV=420,Outline=3,Shadow=1'"
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", str(start), "-i", str(source)]
     if commentary:
         cmd += ["-i", str(local_file(commentary))]
@@ -91,6 +112,8 @@ def render(asset_id: str, preset: str = "medium") -> Path:
         "source_owner": asset.get("owner", ""), "publish_approved": asset.get("publish_approved"),
         "file": str(output_file), "duration_seconds": seconds, "captions_included": bool(has_captions),
         "original_commentary_included": bool(commentary),
+        "commentary_share": round(min(commentary_seconds, seconds) / seconds, 2) if seconds else 0,
+        "series": asset.get("series", ""), "warnings": warnings,
     }
     (output / f"{safe_name(asset_id)}.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     return output_file

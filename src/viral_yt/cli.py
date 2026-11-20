@@ -6,17 +6,19 @@ import json
 import sys
 from pathlib import Path
 
+from .channel import setup_channel
 from .clipper import render
 from .common import ROOT, local_file
 from .discovery import discover
 from .manifest import build_manifest
 from .publisher import upload
 from .rights import load_asset, validate_asset
+from .series import script_scaffold
 from .transcripts import parse_srt, select_highlight, transcribe_owned_file
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="TrendTide 60 | Copyright-aware Shorts studio")
+    parser = argparse.ArgumentParser(description="EzzyClips Ultra (TrendTide 60) | Copyright-aware Shorts studio")
     sub = parser.add_subparsers(dest="command", required=True)
     trends = sub.add_parser("discover", help="Research YouTube trends via official API")
     trends.add_argument("--top", type=int, default=10)
@@ -25,7 +27,10 @@ def main(argv: list[str] | None = None) -> int:
     trends.add_argument("--topics", type=Path, default=None)
     srt = sub.add_parser("suggest-highlights", help="Rank timestamped captions for editorial review")
     srt.add_argument("--srt", type=Path, required=True)
-    for name in ("validate", "render", "transcribe", "upload"):
+    setup = sub.add_parser("channel-setup", help="Apply SEO description, keywords and series playlists (dry-run unless --execute)")
+    setup.add_argument("--execute", action="store_true")
+    setup.add_argument("--business-email", default="")
+    for name in ("validate", "render", "transcribe", "upload", "script"):
         command = sub.add_parser(name)
         command.add_argument("--asset-id", required=True)
         if name == "upload":
@@ -55,6 +60,10 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"srt": str(transcribe_owned_file(path, out))}))
         elif args.command == "upload":
             print(json.dumps(upload(args.asset_id, args.execute, args.publish), indent=2))
+        elif args.command == "channel-setup":
+            print(json.dumps(setup_channel(args.execute, args.business_email), indent=2))
+        elif args.command == "script":
+            print(json.dumps(script_scaffold(load_asset(args.asset_id)), indent=2, ensure_ascii=False))
         elif args.command == "manifest":
             file, rows = build_manifest()
             print(json.dumps({"file": str(file), "assets": len(rows)}, indent=2))
