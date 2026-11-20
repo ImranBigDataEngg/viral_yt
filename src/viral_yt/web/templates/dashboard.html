@@ -19,6 +19,22 @@
     <p class="filename muted small" id="fileName"></p>
 
     <div class="opts">
+      <div class="opt"><span class="opt-l">Video type</span>
+        <div class="toggles">
+          <label class="tog"><input type="radio" name="detect" value="auto" checked><span title="Uses speech when there is talking, action otherwise">✨ Auto</span></label>
+          <label class="tog"><input type="radio" name="detect" value="action"><span title="Loud, sudden and fast moments. No transcription: fastest">🎮 Gameplay</span></label>
+          <label class="tog"><input type="radio" name="detect" value="speech"><span title="Best lines from what people say">🎙 Talking</span></label>
+        </div></div>
+      <div class="opt"><span class="opt-l">Clip length</span>
+        <div class="toggles">{% for v, l in (('auto','Auto'),('30','30 s'),('45','45 s'),('60','60 s')) %}<label class="tog"><input type="radio" name="clip_length" value="{{ v }}" {% if v == 'auto' %}checked{% endif %}><span>{{ l }}</span></label>{% endfor %}</div></div>
+      <div class="opt"><span class="opt-l">Layout</span>
+        <div class="toggles">
+          {% for v, l, t in (('smart','🎯 Smart','Follows faces and the active speaker'),('facecam','🎥 Facecam split','Webcam on top, gameplay below'),('blurfit','🌫 Blur fill','Whole frame with a blurred background'),('crop','✂ Crop','Centre crop, fills the screen'),('fit','▭ Fit','Whole frame with black bars')) %}
+          <label class="tog"><input type="radio" name="layout" value="{{ v }}" {% if v == 'smart' %}checked{% endif %}><span title="{{ t }}">{{ l }}</span></label>{% endfor %}
+          <select name="facecam_pos" class="mini" aria-label="Facecam position" title="Where your webcam is in the video">
+            <option value="auto">Webcam: find it</option><option value="tl">↖ top-left</option><option value="tr">↗ top-right</option>
+            <option value="bl">↙ bottom-left</option><option value="br">↘ bottom-right</option></select>
+        </div></div>
       <div class="opt"><span class="opt-l">Formats</span>
         <div class="toggles">
         {% for r in ratios %}<label class="tog"><input type="checkbox" name="ratios" value="{{ r }}" {% if r == '9:16' %}checked{% endif %}><span><b>{{ r }}</b> {{ {'9:16':'Shorts · Reels · TikTok','1:1':'Feed','16:9':'Landscape'}[r] }}</span></label>{% endfor %}
@@ -27,16 +43,25 @@
         <div class="toggles">{% for n in (3,5,8,10) %}<label class="tog"><input type="radio" name="count" value="{{ n }}" {% if n == 5 %}checked{% endif %}><span>{{ n }}</span></label>{% endfor %}</div></div>
       <div class="opt"><span class="opt-l">Captions</span>
         <div class="toggles">{% for s in styles %}<label class="tog cap-{{ s }}"><input type="radio" name="caption_style" value="{{ s }}" {% if loop.first %}checked{% endif %}><span>{{ s.replace('_',' ').title() }}</span></label>{% endfor %}</div></div>
-      <div class="opt"><span class="opt-l">Hook</span>
-        <label class="tog"><input type="checkbox" name="cold_open" checked><span>Cold open with the best line</span></label></div>
+      <div class="opt"><span class="opt-l">Extras</span>
+        <div class="toggles"><label class="tog"><input type="checkbox" name="cold_open" checked><span>Cold open with the best line</span></label>
+        <label class="tog"><input type="checkbox" name="progress_bar"><span>Progress bar</span></label></div></div>
     </div>
+    <details class="adv">
+      <summary>Advanced: what counts as a highlight (gameplay)</summary>
+      <div class="sliders">
+        {% for k, l, d in (('loud','Loudness',1),('sudden','Sudden sounds',1),('motion','Fast motion',1),('cuts','Scene cuts',0.5)) %}
+        <label>{{ l }}<input type="range" name="w_{{ k }}" min="0" max="3" step="0.5" value="{{ d }}"></label>{% endfor %}
+      </div>
+      <p class="muted small">Turn a signal up to favour it, or to 0 to ignore it (e.g. lower Loudness for videos with loud music).</p>
+    </details>
 
     <div class="rights" id="rightsBox">
       <p class="small muted" id="rightsHint">YouTube links: your verified channels ({{ channels|length }}) and Creative Commons videos. <a href="/account">Verify a channel</a></p>
       <div class="row2" id="rightsFields">
-        <label>For uploads &amp; direct links: I can use this video because…<select name="rights_basis"><option value="">Choose…</option>
-          {% for k, v in bases.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
-        <label>Evidence<input name="rights_evidence" maxlength="500" placeholder="e.g. my own stream from 12 Nov"></label>
+        <label>For uploads &amp; direct links: I can use this video because…<select name="rights_basis">
+          {% for k, v in bases.items() %}<option value="{{ k }}" {% if k == 'original' %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+        <label>Evidence <span class="muted small">(optional for your own recordings)</span><input name="rights_evidence" maxlength="500" placeholder="e.g. permission email from @creator, 18 Nov"></label>
       </div>
       <label class="check small"><input type="checkbox" name="attest" required> I own this video or have the right to edit and republish it.</label>
     </div>

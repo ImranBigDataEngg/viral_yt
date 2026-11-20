@@ -10,6 +10,7 @@
       <div class="ov-hook" id="ovHook"></div>
       <div class="ov-cap" id="ovCap"></div>
       <div class="ov-loading" id="ovLoading">Preparing preview…</div>
+      <div class="ov-pbar" id="ovBar" hidden></div>
     </div>
     <div class="transport">
       <button class="btn small" id="playBtn" type="button">Play</button>
@@ -29,11 +30,34 @@
   </section>
   <section class="side card stack">
     <label>Title<input id="title" maxlength="100"></label>
-    <label>Hook card (first 2.6 s)<input id="hook" maxlength="120"></label>
+    <label>Hook card (first 2.6 s)<input id="hook" maxlength="120" list="hookTemplates" placeholder="Type or pick a template"></label>
+    <datalist id="hookTemplates">
+      {% for t in ("Wait for it…", "Watch till the end", "This went wrong fast", "No way!", "Best play of the stream",
+                   "Did that really happen?", "POV: you finally did it", "Clutch or kick?", "I can't believe this worked",
+                   "Rate this play 1-10") %}<option value="{{ t }}">{% endfor %}
+    </datalist>
     <div class="row2">
       <label>Caption style<select id="style">{% for s in styles %}<option value="{{ s }}">{{ s.replace('_',' ').title() }}</option>{% endfor %}</select></label>
       <label class="check"><input type="checkbox" id="cold"> Cold open</label>
     </div>
+    <div class="row2">
+      <label>Layout<select id="layout">
+        <option value="smart">Smart (follow faces)</option><option value="facecam">Facecam split (auto)</option>
+        <option value="facecam_tl">Facecam ↖</option><option value="facecam_tr">Facecam ↗</option>
+        <option value="facecam_bl">Facecam ↙</option><option value="facecam_br">Facecam ↘</option>
+        <option value="blurfit">Blur fill</option><option value="crop">Crop</option><option value="fit">Fit</option></select></label>
+      <label>Speed<select id="speed">{% for v in (0.5, 0.75, 1, 1.25, 1.5, 2) %}<option value="{{ v }}" {% if v == 1 %}selected{% endif %}>{{ v }}×</option>{% endfor %}</select></label>
+    </div>
+    <div class="row2">
+      <label>Volume <span class="muted small" id="volLbl">0 dB</span><input type="range" id="vol" min="-12" max="12" step="1" value="0"></label>
+      <div class="stack tight">
+        <label class="check"><input type="checkbox" id="fadeIn"> Fade in</label>
+        <label class="check"><input type="checkbox" id="fadeOut"> Fade out</label>
+        <label class="check"><input type="checkbox" id="pbar"> Progress bar</label>
+      </div>
+    </div>
+    <div class="undo-row"><button class="btn small ghost" id="undoBtn" type="button" disabled title="Ctrl+Z">↶ Undo</button>
+      <button class="btn small ghost" id="redoBtn" type="button" disabled title="Ctrl+Y">↷ Redo</button></div>
     <h3>Captions <span class="muted small">(click a line to jump)</span></h3>
     <div class="caps" id="caps"></div>
     <button class="btn small ghost" id="addCap" type="button">+ Add caption at playhead</button>

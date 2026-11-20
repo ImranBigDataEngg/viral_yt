@@ -44,29 +44,48 @@ def plan_clips(asset: dict, source: Path, start: float, end: float) -> tuple[lis
     """Return (plans, words, stats). Cached per source + settings."""
     cfg = settings()
     ccfg, llm_on = cfg["clips"], cfg["llm"].get("engine", "none") != "none" and cfg["clips"].get("llm_rerank", True)
-    words = load_words(asset, source, allow_asr=(asset.get("clip_ranges") or "").strip().lower() == "auto")
+    detect = str(asset.get("detect") or "auto").strip().lower()          # auto | speech | action
+    if detect not in ("auto", "speech", "action"):
+        detect = "auto"
+    length = str(asset.get("clip_length") or "auto").strip().lower()      # auto | 30 | 45 | 60
+    length = length if length in ("30", "45", "60") else "auto"
+    try:
+        weights = json.loads(asset.get("action_weights") or "{}") if isinstance(asset.get("action_weights"), str) \
+            else dict(asset.get("action_weights") or {})
+        weights = {k: max(0.0, min(3.0, float(v))) for k, v in weights.items() if k in ("loud", "sudden", "motion", "cuts")}
+    except (ValueError, TypeError):
+        weights = {}
+    auto_ranges = (asset.get("clip_ranges") or "").strip().lower() == "auto"
+    # action mode never transcribes (fast); captions then only come from YouTube captions if present
+    words = load_words(asset, source, allow_asr=auto_ranges and detect != "action")
     raw = (asset.get("clip_ranges") or "").strip()
     if raw.lower() != "auto":
         ranges = parse_ranges(raw) or [(start, end)]
         return [{"start": a, "end": b, "hook_line": "", "title": "", "quote": None, "source": "manual"} for a, b in ranges], words, {"mode": "manual"}
     count = max(1, min(20, int(asset.get("clip_count") or ccfg["per_source"])))
-    key = json.dumps([ccfg["min_seconds"], ccfg["max_seconds"], count, llm_on])
+    min_s, max_s = ccfg["min_seconds"], ccfg["max_seconds"]
+    if length != "auto":
+        min_s, max_s = max(15, int(length) - 12), int(length) + 8
+    key = json.dumps([min_s, max_s, count, llm_on, detect, length, weights, 2])
     cache = work_dir(source) / "highlights.json"
     if cache.is_file():
         data = json.loads(cache.read_text())
         if data.get("key") == key:
             return data["clips"], words, {**data["stats"], "cached": True}
-    sents = sentences(words)
-    energy = audio_energy(source)
-    clips, stats = select_clips(sents, count, ccfg["min_seconds"], ccfg["max_seconds"], energy, llm_on)
-    if not clips:   # gameplay, music, trailers: too little speech -> pick the most dynamic stretches by audio
-        from .highlights import energy_windows
-        clips = energy_windows(energy, end if end > 0 else probe_duration(source), count,
-                               ccfg["min_seconds"], ccfg["max_seconds"])
-        stats = {**stats, "mode": "energy_fallback"}
-    sil = silences(source)
+    from .action import action_moments
+    duration = end if end > 0 else probe_duration(source)
+    clips, stats, sents = [], {}, sentences(words)
+    if detect != "action":
+        energy = audio_energy(source)
+        clips, stats = select_clips(sents, count, min_s, max_s, energy, llm_on)
+    if not clips:   # gameplay, music, trailers, or action mode: loudness + sudden sounds + motion + scene cuts
+        clips = action_moments(source, duration, count, 30 if length == "auto" else int(length), weights,
+                               min_s=min(15, min_s), max_s=max(60, max_s))
+        stats = {**stats, "mode": "action" if detect == "action" else "action_fallback"}
+    sil = silences(source) if stats.get("mode") not in ("action", "action_fallback") else []
     for c in clips:                                     # cut inside measured silences, not at fixed pads
-        c["start"], c["end"] = round(align_cut(c["start"], sil, "start"), 3), round(align_cut(c["end"], sil, "end"), 3)
+        if sil:
+            c["start"], c["end"] = round(align_cut(c["start"], sil, "start"), 3), round(align_cut(c["end"], sil, "end"), 3)
         q = c.get("quote")
         c["quote_span"] = [sents[q][0], sents[q][1]] if q is not None else None
     cache.write_text(json.dumps({"key": key, "clips": clips, "stats": stats}, indent=2))
@@ -78,6 +97,20 @@ def _segment_chain(seg: dict, src: str, label: str, w: int, h: int, fps: int, k:
     if seg["mode"] == "crop":
         return (f"{trim},crop={seg['cw']}:{seg['ch']}:{seg['x']}:0,scale={w}:{h}:force_original_aspect_ratio=increase,"
                 f"crop={w}:{h},setsar=1,fps={fps}[{label}]")
+    if seg["mode"] == "letterbox":              # whole frame, black bars
+        return (f"{trim},scale={w}:{h}:force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,"
+                f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps={fps}[{label}]")
+    if seg["mode"] == "facecam":                # streamer layout: webcam on top, gameplay below
+        cx, cy, cw, ch = seg["cam"]
+        hc = int(h * 0.38) // 2 * 2
+        gh = h - hc
+        sw, sh = seg["src"]
+        gw = min(sw, int(sh * w / gh) // 2 * 2)
+        gx = (sw - gw) // 2
+        return (f"{trim},split[fa{k}][fb{k}];"
+                f"[fa{k}]crop={cw}:{ch}:{cx}:{cy},scale={w}:{hc}:force_original_aspect_ratio=increase,crop={w}:{hc}[fc{k}];"
+                f"[fb{k}]crop={gw}:{sh}:{gx}:0,scale={w}:{gh}:force_original_aspect_ratio=increase,crop={w}:{gh}[fg{k}];"
+                f"[fc{k}][fg{k}]vstack=inputs=2,setsar=1,fps={fps}[{label}]")
     return f"{trim}[t{k}];" + layout_fit(f"t{k}", w, h, fps, label, tag=f"f{k}")
 
 
@@ -85,6 +118,8 @@ def make_hook(plan: dict, max_words: int = 7) -> str:
     """Hook card text: LLM title if present, else the opening line trimmed to a punchy length."""
     if plan.get("title"):
         return plan["title"]
+    if plan.get("source") == "action":          # gameplay: tease the payoff (editable in the review editor)
+        return "Wait for it…" if (plan.get("peak_at") or 0) - plan.get("start", 0) > 6 else "No way!"
     words = (plan.get("hook_line") or "").replace("\n", " ").split()
     text = " ".join(words[:max_words]).rstrip(",;:")
     return text + ("…" if len(words) > max_words else "")
@@ -122,15 +157,28 @@ def render_clip(asset: dict, source: Path, plan: dict, oid: str, words_all, *, r
     dur = b - a
     wd = work_dir(source)
     rw, rh = (int(x) for x in ratio.split(":"))
+    layout = str(override.get("layout") or layout)
+    if layout.startswith("facecam") and rw >= rh:
+        layout = "blurfit"                      # split needs a vertical frame; keep the whole picture instead
     if layout == "smart":
         wav = extract_audio(source) if has_audio(source) else None
         segs = analyze(source, a, dur, wd, rw / rh, wav)
     else:
-        from .reframe import plan_segments, probe_size
+        from .reframe import find_facecam, plan_segments, probe_size
         sw, sh = probe_size(source)
-        segs = plan_segments(dur, [], None, sw, sh, sw, rw / rh)
-        if layout == "blurfit":
-            segs = [{**sg, "mode": "fit"} for sg in segs]
+        if layout.startswith("facecam"):         # facecam | facecam_tl | facecam_tr | facecam_bl | facecam_br
+            corner = layout.split("_", 1)[1] if "_" in layout else "auto"
+            segs = [{"start": 0.0, "end": round(dur, 3), "mode": "facecam", "src": (sw, sh),
+                     "cam": find_facecam(source, a, dur, wd, corner)}]
+        elif layout == "crop":                   # centre crop, no tracking
+            cw = min(sw, int(round(sh * rw / rh / 2)) * 2)
+            segs = [{"start": 0.0, "end": round(dur, 3), "mode": "crop", "x": (sw - cw) // 2, "cw": cw, "ch": sh}]
+        elif layout == "fit":
+            segs = [{"start": 0.0, "end": round(dur, 3), "mode": "letterbox"}]
+        else:
+            segs = plan_segments(dur, [], None, sw, sh, sw, rw / rh)
+            if layout == "blurfit":
+                segs = [{**sg, "mode": "fit"} for sg in segs]
 
     qspan = plan.get("quote_span") if cold else None
     qd, qa, qb = 0.0, 0.0, 0.0
@@ -171,7 +219,15 @@ def render_clip(asset: dict, source: Path, plan: dict, oid: str, words_all, *, r
     for k, seg in enumerate(segs):
         parts.append(_segment_chain(seg, f"in{k}", f"v{k}", w, h, fps, k))
         labels.append(f"[v{k}]")
-    tail = "[v]" if preview else f"[vc];[vc]ass={ass.name}[v]"
+    pbar = is_true(override["progress_bar"]) if "progress_bar" in override else is_true(_opt(asset, "progress_bar", False))
+    if preview:
+        tail = "[v]"
+    elif pbar:                                 # thin bar filling left -> right over the clip (watch-time cue)
+        bh = max(6, h // 160) // 2 * 2
+        tail = (f"[vc];[vc]ass={ass.name}[vs];color=c=white:s={w}x{bh}:r={fps},format=rgba,colorchannelmixer=aa=0.9[pb];"
+                f"[vs][pb]overlay=x='-w+w*t/{total:.3f}':y=H-h:shortest=1[v]")
+    else:
+        tail = f"[vc];[vc]ass={ass.name}[v]"
     parts.append("".join(labels) + f"concat=n={len(labels)}:v=1:a=0" + tail)
     lufs = loudnorm(cfg["loudness_lufs"])
     if src_audio:
@@ -194,7 +250,33 @@ def render_clip(asset: dict, source: Path, plan: dict, oid: str, words_all, *, r
         parts.append(f"[srcA]{lufs}[a]" if not preview else "[srcA]anull[a]")
     else:
         parts.append(f"anullsrc=r=48000:cl=stereo,atrim=0:{total:.3f}[a]")
-    base_cmd = cmd + ["-filter_complex", ";".join(parts), "-map", "[v]", "-map", "[a]", "-t", f"{total:.3f}"]
+    # editor finishing touches, applied after captions so everything stays in sync
+    speed = max(0.5, min(2.0, float(override.get("speed") or 1.0)))
+    fade_in, fade_out = (max(0.0, min(2.0, float(override.get(k) or 0))) for k in ("fade_in", "fade_out"))
+    gain = max(-12.0, min(12.0, float(override.get("volume_db") or 0)))
+    out_total = total / speed
+    if preview:          # the browser editor previews speed/fades live (playbackRate), keep timings 1:1
+        speed, fade_in, fade_out, gain = 1.0, 0.0, 0.0, 0.0
+    out_total = total / speed
+    if speed != 1.0 or fade_in or fade_out or gain:
+        vi = next(i for i in range(len(parts) - 1, -1, -1) if parts[i].endswith("[v]"))
+        parts[vi] = parts[vi][:-3] + "[vpost]"
+        parts[-1] = parts[-1][:-3] + "[apost]"
+        vf, af = [], []
+        if speed != 1.0:
+            vf.append(f"setpts=PTS/{speed:.3f}")
+            af.append(f"atempo={speed:.3f}")
+        if fade_in:
+            vf.append(f"fade=t=in:st=0:d={fade_in:.2f}")
+            af.append(f"afade=t=in:st=0:d={fade_in:.2f}")
+        if fade_out:
+            vf.append(f"fade=t=out:st={max(0.0, out_total - fade_out):.3f}:d={fade_out:.2f}")
+            af.append(f"afade=t=out:st={max(0.0, out_total - fade_out):.3f}:d={fade_out:.2f}")
+        if gain:
+            af.append(f"volume={gain:.1f}dB,alimiter=limit=0.95")
+        parts.append(f"[vpost]{','.join(vf) or 'null'}[v]")
+        parts.append(f"[apost]{','.join(af) or 'anull'}[a]")
+    base_cmd = cmd + ["-filter_complex", ";".join(parts), "-map", "[v]", "-map", "[a]", "-t", f"{out_total:.3f}"]
     used = None if preview else enc
     try:
         run(base_cmd + encode_args(cfg["crf"] + (6 if preview else 0), preset, fps, used) + [out_name], cwd=out_dir)
@@ -205,7 +287,7 @@ def render_clip(asset: dict, source: Path, plan: dict, oid: str, words_all, *, r
         run(base_cmd + encode_args(cfg["crf"], preset, fps, None) + [out_name], cwd=out_dir)
     out_file = out_dir / out_name
     if preview:
-        return {"file": str(out_file), "duration_seconds": round(total, 2)}
+        return {"file": str(out_file), "duration_seconds": round(out_total, 2)}
     n, total_parts = part
     title = (asset.get("title") or "").strip()
     title = (f"{title} (Part {n})" if total_parts > 1 else title) if title else (plan.get("title") or hook)
@@ -215,15 +297,18 @@ def render_clip(asset: dict, source: Path, plan: dict, oid: str, words_all, *, r
         "description": asset.get("description", ""), "tags": [t.strip() for t in (asset.get("tags") or "").split("|") if t.strip()],
         "rights_basis": basis, "rights_evidence": asset.get("rights_evidence"),
         "source_video_url": asset.get("source_video_url", ""), "source_owner": asset.get("owner", ""),
-        "source_file": str(source), "file": str(out_file), "ratio": ratio, "duration_seconds": round(total, 2),
+        "source_file": str(source), "file": str(out_file), "ratio": ratio, "duration_seconds": round(out_total, 2),
+        "edit": {"speed": speed, "fade_in": fade_in, "fade_out": fade_out, "volume_db": gain},
         "range": [a, b], "plan": plan, "cold_open_seconds": round(qd, 2),
-        "captions_included": bool(cap_words), "caption_style": style, "hook_text": hook, "layout": layout,
+        "captions_included": bool(cap_words), "caption_style": style, "hook_text": hook, "layout": layout, "progress_bar": pbar,
         "reframe_segments": segs, "encoder": used or "libx264", "voice": "own" if commentary else None,
         "source_audio": "ducked" if (commentary and mix == "duck") else ("none" if commentary else "full"),
         "contains_realistic_synthetic_media": False, "asset": asset, "edited": bool(override),
         "highlight": {k: plan.get(k) for k in ("score", "source", "reason", "hook_line")},
-        "scores": clip_scores(" ".join(w[2] for w in cap_words), plan.get("hook_line") or
-                              (cap_words and " ".join(w[2] for w in cap_words[:12])) or "", total),
+        "scores": ({"overall": int(plan.get("score") or 50), "action": True, **(plan.get("signals") or {})}
+                   if plan.get("source") == "action" else
+                   clip_scores(" ".join(w[2] for w in cap_words), plan.get("hook_line") or
+                               (cap_words and " ".join(w[2] for w in cap_words[:12])) or "", total)),
     }
 
 

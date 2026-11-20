@@ -78,9 +78,13 @@
           <div><h3>{{ o.title or o.hook }}</h3><p class="muted small">{{ o.ratio }} · {{ '%.0f'|format(o.duration or 0) }} s{% if o.score is not none %} · originality {{ o.score }}{% endif %}</p></div>
         </div>
         {% if o.scores %}<ul class="minibars">
+          {% if o.scores.action %}
+          <li>Loud<i class="bar" data-w="{{ o.scores.loud }}"></i><b>{{ o.scores.loud }}</b></li>
+          <li>Sudden<i class="bar" data-w="{{ o.scores.sudden }}"></i><b>{{ o.scores.sudden }}</b></li>
+          <li>Motion<i class="bar" data-w="{{ o.scores.motion }}"></i><b>{{ o.scores.motion }}</b></li></ul>{% else %}
           <li>Hook<i class="bar" data-w="{{ o.scores.hook }}"></i><b>{{ o.scores.hook }}</b></li>
           <li>Flow<i class="bar" data-w="{{ o.scores.flow }}"></i><b>{{ o.scores.flow }}</b></li>
-          <li>Value<i class="bar" data-w="{{ o.scores.value }}"></i><b>{{ o.scores.value }}</b></li></ul>{% endif %}
+          <li>Value<i class="bar" data-w="{{ o.scores.value }}"></i><b>{{ o.scores.value }}</b></li></ul>{% endif %}{% endif %}
         <div class="row-btns">
           <a class="btn sm" href="/media/{{ o.id }}/mp4?download=1">⬇ Download</a>
           <a class="btn sm ghost" href="/app/review/{{ o.id }}">✎ Edit</a>

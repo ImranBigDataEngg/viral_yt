@@ -224,6 +224,35 @@ class TestWeb(unittest.TestCase):
             self.assertEqual(st, 303)
             self.assertIn("/app?notice=", h.get("location", ""), url)
 
+    def test_05b_gameplay_options_and_easy_rights(self):
+        c = self._user("gamer@example.com")
+        uid = self._uid("gamer@example.com")
+        self._activate(uid)
+        st, h, _ = c.multipart("/app/jobs", [("csrf", c.csrf("/app")), ("attest", "on"), ("rights_basis", "original"),
+                                             ("detect", "action"), ("clip_length", "45"), ("layout", "facecam"),
+                                             ("facecam_pos", "tr"), ("progress_bar", "on"), ("w_loud", "0"),
+                                             ("w_motion", "2.5"), ("w_sudden", "9")],
+                               {"file": ("stream.mp4", self.video)})
+        self.assertEqual(st, 303, h)
+        jid = h["location"].rsplit("/", 1)[1]
+        spec = json.loads(self.app.state.db.one("SELECT spec FROM jobs WHERE id=?", (jid,))["spec"])
+        self.assertEqual((spec["detect"], spec["clip_length"], spec["layout"], spec["progress_bar"]),
+                         ("action", "45", "facecam_tr", True))
+        self.assertEqual(spec["action_weights"], {"loud": 0.0, "sudden": 3.0, "motion": 2.5})   # clamped
+        self.assertIn("gamer@example.com", spec["rights_evidence"])      # attestation recorded as evidence
+        # bogus values fall back to safe defaults
+        st, h, _ = c.multipart("/app/jobs", [("csrf", c.csrf("/app")), ("attest", "on"), ("rights_basis", "original"),
+                                             ("detect", "rm -rf"), ("layout", "../../x"), ("clip_length", "9999")],
+                               {"file": ("stream.mp4", self.video)})
+        jid2 = h["location"].rsplit("/", 1)[1]
+        spec2 = json.loads(self.app.state.db.one("SELECT spec FROM jobs WHERE id=?", (jid2,))["spec"])
+        self.assertEqual((spec2["detect"], spec2["layout"], spec2["clip_length"]), ("auto", "smart", "auto"))
+        for j in (jid, jid2):                                             # let the worker finish before later tests
+            for _ in range(240):
+                if json.loads(c.get(f"/api/jobs/{j}")[2])["status"] in ("done", "failed"):
+                    break
+                time.sleep(0.5)
+
     def test_06_job_review_rerender_and_idor(self):
         c = self._user("creator@example.com")
         uid = self._uid("creator@example.com")
@@ -266,7 +295,9 @@ class TestWeb(unittest.TestCase):
         caps[0]["text"] = "EDITED caption"
         st, _, body = c.req("POST", f"/api/outputs/{oid}/render", json.dumps(
             {"start": a + 1, "end": b, "captions": caps, "hook": "New hook", "caption_style": "karaoke_fill",
-             "cold_open": False, "title": "Edited title"}).encode(), {"Content-Type": "application/json", "X-CSRF-Token": tok})
+             "cold_open": False, "title": "Edited title", "speed": 1.25, "fade_in": 0.5, "fade_out": 0.5,
+             "volume_db": 2, "layout": "fit", "progress_bar": True}).encode(),
+            {"Content-Type": "application/json", "X-CSRF-Token": tok})
         self.assertEqual(st, 200, body)
         rj = json.loads(body)["job"]
         for _ in range(240):
@@ -277,6 +308,9 @@ class TestWeb(unittest.TestCase):
         self.assertEqual(j["status"], "done", j)
         srt = c.get(f"/media/{oid}/srt")[2].decode()
         self.assertIn("EDITED", srt)
+        st2 = json.loads(c.get(f"/api/outputs/{oid}")[2])
+        self.assertEqual((st2["layout"], st2["edit"]["speed"], st2["progress_bar"]), ("fit", 1.25, True))
+        self.assertAlmostEqual(st2["duration"], (b - a - 1) / 1.25, delta=0.6)
         st, h, _ = c.get(f"/media/{oid}/mp4?download=1")
         self.assertEqual(st, 200)
         self.assertIn("attachment", h.get("content-disposition", ""))

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import secrets
 import shutil
+import time
 import urllib.parse
 from pathlib import Path
 
@@ -255,11 +256,13 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         clen = int(req.headers.get("content-length") or 0)
         if clen > cfg.max_upload_bytes + 1_000_000:
             raise HTTPException(413, "File too large")
-        form = await req.form(max_files=1, max_fields=20, max_part_size=64 * 1024)
+        form = await req.form(max_files=1, max_fields=40, max_part_size=64 * 1024)
         try:
             return await _create_job(req, s, u, ent, form)
         finally:
             await form.close()
+
+    LAYOUTS = ("smart", "facecam", "blurfit", "crop", "fit")
 
     async def _create_job(req: Request, s: dict, u: dict, ent: dict, form):
         if not security.csrf_ok(s, form.get("csrf")):
@@ -276,7 +279,20 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
         spec = {"ratios": ratios, "caption_style": style, "count": count, "cold_open": form.get("cold_open") == "on",
                 "rights_basis": basis, "rights_evidence": (form.get("rights_evidence") or "")[:500],
                 "max_seconds": ent["max_minutes"] * 60, "max_bytes": cfg.max_upload_bytes,
-                "category": (form.get("category") or "")[:40]}
+                "category": (form.get("category") or "")[:40],
+                "detect": form.get("detect") if form.get("detect") in ("auto", "speech", "action") else "auto",
+                "clip_length": form.get("clip_length") if form.get("clip_length") in ("auto", "30", "45", "60") else "auto",
+                "layout": form.get("layout") if form.get("layout") in LAYOUTS else "smart",
+                "progress_bar": form.get("progress_bar") == "on"}
+        if spec["layout"] == "facecam" and form.get("facecam_pos") in ("tl", "tr", "bl", "br"):
+            spec["layout"] = "facecam_" + form.get("facecam_pos")
+        weights = {}
+        for k in ("loud", "sudden", "motion", "cuts"):
+            try:
+                weights[k] = max(0.0, min(3.0, float(form.get("w_" + k))))
+            except (TypeError, ValueError):
+                pass
+        spec["action_weights"] = weights
         if form.get("attest") != "on":
             return RedirectResponse("/app?notice=" + urllib.parse.quote("Please confirm you hold the rights."), 303)
         upload = form.get("file")
@@ -315,6 +331,10 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
                 spec["url"] = url
             else:
                 raise IngestError("Paste a link or choose a file")
+            if not youtube_id(url or "") and basis == "original" and len(spec["rights_evidence"]) < 8:
+                # own recordings (OBS, console capture, phone): the signed attestation is the evidence
+                spec["rights_evidence"] = (f"Uploader attests this is their own recording ({u['email']}, "
+                                           f"{time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime())})")
             if not youtube_id(url or "") and (basis not in APPROVED_LICENSES or len(spec["rights_evidence"]) < 8):
                 raise IngestError("For uploads and direct links, choose your rights basis and describe the evidence.")
         except IngestError as exc:
@@ -391,7 +411,9 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
                 "caption_style": meta.get("caption_style", "bold_pop"), "cold_open": meta.get("cold_open_seconds", 0) > 0,
                 "cold_open_seconds": meta.get("cold_open_seconds", 0), "range": meta.get("range"), "ratio": meta.get("ratio"),
                 "duration": meta.get("duration_seconds"), "captions": caps,
-                "source_duration": meta.get("source_duration")}
+                "source_duration": meta.get("source_duration"), "layout": meta.get("layout", "smart"),
+                "progress_bar": bool(meta.get("progress_bar")),
+                "edit": meta.get("edit") or {"speed": 1.0, "fade_in": 0.0, "fade_out": 0.0, "volume_db": 0.0}}
 
     async def api_output(req: Request):
         s, u = require_user(req)
@@ -417,6 +439,21 @@ def create_app(cfg: WebConfig | None = None, start_workers: bool = True) -> Star
             ov["cold_open"] = bool(body["cold_open"])
         if body.get("title"):
             ov["title"] = str(body["title"])[:100]
+        try:
+            if "speed" in body:
+                ov["speed"] = max(0.5, min(2.0, float(body["speed"])))
+            for k, hi in (("fade_in", 2.0), ("fade_out", 2.0)):
+                if k in body:
+                    ov[k] = max(0.0, min(hi, float(body[k])))
+            if "volume_db" in body:
+                ov["volume_db"] = max(-12.0, min(12.0, float(body["volume_db"])))
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Invalid speed, fade or volume")
+        lay = str(body.get("layout") or "")
+        if lay in LAYOUTS or lay in ("facecam_tl", "facecam_tr", "facecam_bl", "facecam_br"):
+            ov["layout"] = lay
+        if "progress_bar" in body:
+            ov["progress_bar"] = bool(body["progress_bar"])
         return ov
 
     async def api_preview(req: Request):

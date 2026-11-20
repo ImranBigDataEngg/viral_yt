@@ -1,9 +1,11 @@
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -369,6 +371,54 @@ class EnergyFallbackTests(unittest.TestCase):
         from viral_yt.highlights import energy_windows
         self.assertEqual(energy_windows({t: -120.0 for t in range(100)}, 100), [])
         self.assertEqual(energy_windows({0: -20.0}, 10), [])
+
+
+class GameplayModeTests(unittest.TestCase):
+    """Action detector + streamer layouts on a synthetic 'gameplay' video (still / burst / still)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = Path(tempfile.mkdtemp())
+        cls.src = cls.dir / "game.mp4"
+        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                        "-f", "lavfi", "-i", "color=c=gray:s=640x360:r=30:d=50",
+                        "-f", "lavfi", "-i", "testsrc2=s=640x360:r=30:d=15",
+                        "-f", "lavfi", "-i", "color=c=gray:s=640x360:r=30:d=35",
+                        "-f", "lavfi", "-i", "aevalsrc='0.03*sin(2*PI*220*t)*(1+20*between(t,51,64))':s=48000:d=100",
+                        "-filter_complex", "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]", "-map", "[v]", "-map", "3:a",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", str(cls.src)], check=True)
+
+    def test_action_finds_the_burst_fast_without_asr(self):
+        from viral_yt import clipper
+        asset = {"asset_id": "game", "clip_ranges": "auto", "clip_count": 3, "detect": "action", "clip_length": "30",
+                 "rights_basis": "original"}
+        with mock.patch.object(clipper, "load_words", return_value=[]) as lw:
+            plans, _, stats = clipper.plan_clips(asset, self.src, 0, 0)
+            self.assertFalse(lw.call_args.kwargs.get("allow_asr", True))
+        self.assertEqual(stats["mode"], "action")
+        best = max(plans, key=lambda p: p["score"])
+        self.assertTrue(best["start"] <= 55 and best["end"] >= 60, best)
+        self.assertEqual(best["score"], 99)
+
+    def test_facecam_split_and_editor_touches_render(self):
+        from viral_yt import clipper
+        asset = {"asset_id": "game2", "title": "t", "rights_basis": "original", "layout": "facecam_tr", "progress_bar": "true"}
+        plan = {"start": 50.0, "end": 66.0, "source": "action", "peak_at": 58}
+        out = self.dir / "out"
+        m = clipper.render_clip(asset, self.src, plan, "fc1", [], out_dir=out,
+                                override={"speed": 2.0, "fade_in": 0.5, "fade_out": 0.5, "volume_db": -3})
+        self.assertAlmostEqual(m["duration_seconds"], 8.0, delta=0.1)
+        self.assertEqual((m["layout"], m["progress_bar"], m["hook_text"]), ("facecam_tr", True, "Wait for it…"))
+        self.assertAlmostEqual(media_duration_of(out / "fc1.mp4"), 8.0, delta=0.3)
+        for lay in ("crop", "fit"):
+            r = clipper.render_clip({**asset, "layout": lay}, self.src, plan, f"l_{lay}", [], out_dir=out)
+            self.assertTrue(Path(r["file"]).stat().st_size > 1000)
+
+
+def media_duration_of(p):
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(p)],
+                       capture_output=True, text=True)
+    return float(r.stdout.strip())
 
 if __name__ == "__main__":
     unittest.main()

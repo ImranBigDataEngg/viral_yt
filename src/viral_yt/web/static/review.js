@@ -11,7 +11,43 @@
   let trim = [0, 0];          // desired source range
   let caps = [];              // [{start,end,text}] output timeline
   let win = [0, 1];           // timeline window (source seconds)
-  const HOOK_S = 2.6;
+  const HOOK_S = 2.6, FADE = 0.5;
+  const ovBar = $("ovBar");
+  let previewLayout = "smart";
+
+  // -------- finishing touches (live in the browser, real in the final render) ---------------------------------
+  const applyLive = () => {
+    player.playbackRate = parseFloat($("speed").value) || 1;
+    const db = parseFloat($("vol").value) || 0;
+    $("volLbl").textContent = (db > 0 ? "+" : "") + db + " dB";
+    player.volume = Math.min(1, Math.pow(10, db / 20));
+  };
+  ["speed", "vol"].forEach(id => $(id).addEventListener("input", applyLive));
+
+  // -------- undo / redo ------------------------------------------------------------------------------------
+  const FIELDS = ["title", "hook", "style", "layout", "speed", "vol"], CHECKS = ["cold", "fadeIn", "fadeOut", "pbar"];
+  const snap = () => JSON.stringify({trim, caps, f: FIELDS.map(id => $(id).value), c: CHECKS.map(id => $(id).checked)});
+  let past = [], future = [], cur = null;
+  const syncUndo = () => { $("undoBtn").disabled = !past.length; $("redoBtn").disabled = !future.length; };
+  function record() {
+    const now = snap(); if (now === cur) return;
+    if (cur !== null) { past.push(cur); if (past.length > 100) past.shift(); future = []; }
+    cur = now; syncUndo();
+  }
+  function restore(state) {
+    const o = JSON.parse(state); trim = o.trim; caps = o.caps;
+    FIELDS.forEach((id, i) => { $(id).value = o.f[i]; }); CHECKS.forEach((id, i) => { $(id).checked = o.c[i]; });
+    cur = state; drawTimeline(); renderCaps(); applyLive(); syncUndo();
+  }
+  const undo = () => { if (past.length) { future.push(cur); restore(past.pop()); } };
+  const redo = () => { if (future.length) { past.push(cur); restore(future.pop()); } };
+  $("undoBtn").addEventListener("click", undo); $("redoBtn").addEventListener("click", redo);
+  document.addEventListener("keydown", e => {
+    if (!(e.ctrlKey || e.metaKey) || ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName) && e.target.type !== "range") return;
+    if (e.key.toLowerCase() === "z" && !e.shiftKey) { undo(); e.preventDefault(); }
+    else if (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey)) { redo(); e.preventDefault(); }
+  });
+  ed.addEventListener("change", record);
 
   const api = async (path, body) => {
     const r = await fetch(path, {method: body ? "POST" : "GET", credentials: "same-origin",
@@ -40,7 +76,7 @@
     };
     handle.addEventListener("pointerdown", e => {
       handle.setPointerCapture(e.pointerId); handle.addEventListener("pointermove", move);
-      handle.addEventListener("pointerup", () => handle.removeEventListener("pointermove", move), {once: true});
+      handle.addEventListener("pointerup", () => { handle.removeEventListener("pointermove", move); record(); }, {once: true});
     });
     handle.addEventListener("keydown", e => {
       const d = e.key === "ArrowLeft" ? -0.1 : e.key === "ArrowRight" ? 0.1 : 0;
@@ -64,13 +100,13 @@
       row.querySelector(".e").addEventListener("change", e => { c.end = parseFloat(e.target.value) || c.start + 0.5; });
       row.querySelector(".t").addEventListener("input", e => { c.text = e.target.value; });
       row.querySelector(".t").addEventListener("focus", () => { player.currentTime = c.start + 0.01; });
-      row.querySelector("button").addEventListener("click", () => { caps.splice(i, 1); renderCaps(); });
+      row.querySelector("button").addEventListener("click", () => { caps.splice(i, 1); renderCaps(); record(); });
       capsBox.appendChild(row);
     });
   }
   $("addCap").addEventListener("click", () => {
     const t = player.currentTime || 0;
-    caps.push({start: t, end: t + 1.2, text: "New caption"}); caps.sort((a, b) => a.start - b.start); renderCaps();
+    caps.push({start: t, end: t + 1.2, text: "New caption"}); caps.sort((a, b) => a.start - b.start); renderCaps(); record();
   });
 
   // -------- overlay preview (approximates the burned-in ASS styles) ----------------------------------------
@@ -92,6 +128,12 @@
     document.querySelectorAll(".caprow").forEach(r => r.classList.toggle("active", caps[r.dataset.i] === c));
     const dur = player.duration || 0;
     $("timeLbl").textContent = `${fmt(t)} / ${fmt(dur)}`;
+    ovBar.hidden = !$("pbar").checked;
+    if (dur) ovBar.style.width = Math.min(100, (t / dur) * 100) + "%";
+    let op = 1;                                   // fade preview (the final render uses real fades)
+    if ($("fadeIn").checked && t < FADE) op = Math.min(op, t / FADE);
+    if ($("fadeOut").checked && dur && dur - t < FADE) op = Math.min(op, Math.max(0, (dur - t) / FADE));
+    player.style.opacity = op;
     if (preview) {
       const src = t < preview.qd ? null : preview.range[0] + (t - preview.qd);
       head.style.display = src === null ? "none" : "block";
@@ -109,23 +151,27 @@
     try {
       const r = await api(`/api/outputs/${oid}/preview`, body);
       preview = {range: r.range, qd: r.cold_open_seconds};
+      previewLayout = body.layout || previewLayout;
       caps = r.captions; renderCaps();
-      player.src = r.url; await player.load();
+      player.src = r.url; await player.load(); applyLive();
       loading.classList.add("hidden");
     } catch (e) { loading.textContent = "Preview failed: " + e.message; }
   }
   $("previewBtn").addEventListener("click", () => {
     if (trim[1] - trim[0] < 3) { alert("A clip must be at least 3 seconds."); return; }
-    loadPreview({start: trim[0], end: trim[1], cold_open: $("cold").checked});
+    loadPreview({start: trim[0], end: trim[1], cold_open: $("cold").checked, layout: $("layout").value});
   });
-  $("cold").addEventListener("change", () => loadPreview({start: trim[0], end: trim[1], cold_open: $("cold").checked}));
+  $("cold").addEventListener("change", () => loadPreview({start: trim[0], end: trim[1], cold_open: $("cold").checked, layout: $("layout").value}));
+  $("layout").addEventListener("change", () => loadPreview({start: trim[0], end: trim[1], cold_open: $("cold").checked, layout: $("layout").value}));
 
   $("renderBtn").addEventListener("click", async () => {
     const btn = $("renderBtn"), status = $("renderStatus");
     btn.disabled = true; status.textContent = "Queued…";
     try {
       const body = {start: trim[0], end: trim[1], captions: caps.filter(c => c.text.trim()), hook: $("hook").value,
-        title: $("title").value, caption_style: $("style").value, cold_open: $("cold").checked};
+        title: $("title").value, caption_style: $("style").value, cold_open: $("cold").checked,
+        layout: $("layout").value, speed: parseFloat($("speed").value) || 1, volume_db: parseFloat($("vol").value) || 0,
+        fade_in: $("fadeIn").checked ? FADE : 0, fade_out: $("fadeOut").checked ? FADE : 0, progress_bar: $("pbar").checked};
       const {job} = await api(`/api/outputs/${oid}/render`, body);
       const poll = async () => {
         const j = await api(`/api/jobs/${job}`);
@@ -147,8 +193,13 @@
     trim = [...S.range]; win = [Math.max(0, S.range[0] - 30), S.range[1] + 30];
     $("title").value = S.title || ""; $("hook").value = S.hook || ""; $("style").value = S.caption_style;
     $("cold").checked = !!S.cold_open;
+    const E = S.edit || {};
+    $("layout").value = S.layout || "smart"; previewLayout = $("layout").value;
+    $("speed").value = String(E.speed || 1); $("vol").value = E.volume_db || 0;
+    $("fadeIn").checked = !!E.fade_in; $("fadeOut").checked = !!E.fade_out; $("pbar").checked = !!S.progress_bar;
     drag(hIn, 0); drag(hOut, 1); drawTimeline();
     await loadPreview({start: trim[0], end: trim[1], cold_open: S.cold_open});
+    record();
     requestAnimationFrame(overlay);
   })().catch(e => { loading.textContent = "Could not load clip: " + e.message; });
 })();

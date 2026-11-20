@@ -95,3 +95,16 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(poll, 1500);
   }
 });
+
+// dashboard: show the webcam-position picker only for the facecam layout
+(() => {
+  const form = document.getElementById("newjob");
+  const pos = form && form.querySelector("select[name=facecam_pos]");
+  if (!pos) return;
+  const sync = () => {
+    const on = (form.querySelector("input[name=layout]:checked") || {}).value === "facecam";
+    pos.hidden = !on;
+  };
+  form.querySelectorAll("input[name=layout]").forEach(r => r.addEventListener("change", sync));
+  sync();
+})();

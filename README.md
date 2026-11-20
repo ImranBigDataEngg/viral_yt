@@ -53,6 +53,11 @@ resumable cache. `trendtide doctor` checks everything.
 - **Browser review editor:** trim handles, caption text and timing edits, hook, style and cold open, then the final render.
 - **Professional web app** with Stripe subscriptions ($2/day, $25/month, $250/year) and a hardened security model.
 
+### Gameplay mode (no transcription) → [docs/CLIPIT_COMPARISON.md](docs/CLIPIT_COMPARISON.md)
+- 🎮 **Gameplay** finds moments from loudness, sudden sounds, motion and scene cuts in seconds. Tune it with the Advanced sliders and pick 30/45/60 s clips.
+- Layouts: Smart, **Facecam split**, Blur fill, Crop, Fit. Extras: progress bar.
+- Editor: speed, volume, fades, undo/redo, hook templates.
+
 ### Optional VoiceStudio voice engine → [docs/VOICESTUDIO.md](docs/VOICESTUDIO.md)
 - Set `VOICESTUDIO_URL=http://127.0.0.1:3900` to use a local [VoiceStudio](https://github.com/debpalash/VoiceStudio)
   for voiceovers, all dub languages and your own consented cloned voice on "Make it original". Piper is the fallback.

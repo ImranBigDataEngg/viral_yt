@@ -268,3 +268,48 @@ def analyze(source: Path, a: float, d: float, workdir: Path, out_ratio: float = 
     motion = mouth_motion(frames, faces) if faces else None
     speech = speech_activity(wav16k, a, len(frames)) if frames else None
     return plan_segments(d, cuts, faces, src_w, src_h, aw, out_ratio, motion, speech)
+
+
+CORNERS = {"tl": (0.0, 0.0), "tr": (1.0, 0.0), "bl": (0.0, 1.0), "br": (1.0, 1.0)}
+
+
+def find_facecam(source: Path, a: float, d: float, workdir: Path, corner: str = "auto") -> tuple[int, int, int, int]:
+    """Webcam overlay rectangle (x, y, w, h) in source pixels for the streamer 'facecam split' layout.
+    auto: a face that stays in the same spot near the frame edge in most sampled frames is the webcam
+    (game characters move); otherwise fall back to the chosen corner (default bottom-left)."""
+    sw, sh = probe_size(source)
+    if corner in CORNERS:
+        return _corner_box(corner, sw, sh)
+    aw = int(round(ANALYSIS_H * sw / sh / 2)) * 2
+    try:
+        frames, _ = _decode(source, a, min(d, 60.0), workdir, aw)
+        step = max(1, len(frames) // 12)
+        frames = frames[::step][:12]
+        faces = _faces(frames) if frames else None
+    except Exception:
+        faces = None
+    if faces:
+        cells: dict[tuple[int, int], list] = {}
+        for fl in faces:
+            for cx, cy, fw, *_ in fl:
+                edge = min(cx, aw - cx) < aw * 0.30 or min(cy, ANALYSIS_H - cy) < ANALYSIS_H * 0.30
+                if edge and fw < ANALYSIS_H * 0.45:
+                    cells.setdefault((int(cx // (aw / 8)), int(cy // (ANALYSIS_H / 6))), []).append((cx, cy, fw))
+        if cells:
+            hits = max(cells.values(), key=len)
+            if len(hits) >= max(2, len(faces) // 3):
+                k = sw / aw
+                cx = sorted(h[0] for h in hits)[len(hits) // 2] * k
+                cy = sorted(h[1] for h in hits)[len(hits) // 2] * k
+                fw = sorted(h[2] for h in hits)[len(hits) // 2] * k
+                bw, bh = min(sw, fw * 3.4), min(sh, fw * 2.6)
+                x = int(max(0, min(sw - bw, cx - bw / 2)))
+                y = int(max(0, min(sh - bh, cy - bh / 2 + fw * 0.15)))
+                return x // 2 * 2, y // 2 * 2, int(bw) // 2 * 2, int(bh) // 2 * 2
+    return _corner_box("bl", sw, sh)
+
+
+def _corner_box(corner: str, sw: int, sh: int) -> tuple[int, int, int, int]:
+    fx, fy = CORNERS[corner]
+    bw, bh = int(sw * 0.30) // 2 * 2, int(sh * 0.30) // 2 * 2
+    return int((sw - bw) * fx) // 2 * 2, int((sh - bh) * fy) // 2 * 2, bw, bh
