@@ -307,3 +307,13 @@ box-shadow:0 30px 90px #000,0 0 0 1px #ffffff08 inset}
 .foot-cols .foot-brand{display:block}.foot-cols .foot-brand .brand{margin-bottom:8px}.foot-cols .foot-brand p{margin:6px 0}
 @media (max-width:900px){.nav .menu{display:none}.announce span{display:none}.nav{padding:10px 16px}.nav-actions{gap:12px}
 .cookie{left:12px;right:12px;bottom:70px}}
+
+.demo{display:grid;grid-template-columns:1.2fr .8fr;gap:44px;align-items:center}
+.demo h2{font-size:clamp(30px,4vw,46px);line-height:1.08}.demo .lead{text-align:left;margin:0 0 18px}
+.mini-steps{list-style:none;padding:0;margin:0 0 22px;display:flex;flex-direction:column;gap:10px}
+.mini-steps li{display:flex;gap:12px;align-items:center;color:#e4e4e7;font-weight:600}
+.mini-steps b{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#fff;color:#000}
+.demo-phone{justify-self:center;width:min(340px,80vw);aspect-ratio:9/16;border-radius:42px;padding:10px;background:#18181b;
+border:1px solid #3f3f46;box-shadow:0 40px 120px #6d28d955,0 0 0 1px #ffffff10 inset}
+.demo-phone video{width:100%;height:100%;object-fit:cover;border-radius:32px;background:#000;display:block}
+@media (max-width:900px){.demo{grid-template-columns:1fr}.demo-phone{order:-1}}
